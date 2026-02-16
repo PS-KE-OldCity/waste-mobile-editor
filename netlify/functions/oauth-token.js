@@ -3,10 +3,9 @@ exports.handler = async (event) => {
   const client_secret = process.env.GITHUB_CLIENT_SECRET;
   const redirect_uri = process.env.GITHUB_OAUTH_REDIRECT_URI;
 
-  // meta endpoint pre frontend (bez secretu)
+  // GET: meta (no secret)
   if (event.httpMethod === "GET") {
-    const url = new URL("https://x");
-    const mode = url.searchParams.get("mode");
+    const mode = event.queryStringParameters?.mode;
     if (mode === "meta") {
       return {
         statusCode: 200,
@@ -14,8 +13,10 @@ exports.handler = async (event) => {
         body: JSON.stringify({ client_id, redirect_uri })
       };
     }
+    return { statusCode: 404, body: "Not Found" };
   }
 
+  // POST: token exchange
   if (event.httpMethod !== "POST") {
     return { statusCode: 405, body: "Method Not Allowed" };
   }
@@ -26,16 +27,13 @@ exports.handler = async (event) => {
 
     const resp = await fetch("https://github.com/login/oauth/access_token", {
       method: "POST",
-      headers: {
-        "Accept": "application/json",
-        "Content-Type": "application/json"
-      },
+      headers: { "Accept": "application/json", "Content-Type": "application/json" },
       body: JSON.stringify({ client_id, client_secret, code, redirect_uri })
     });
 
     const data = await resp.json();
     if (!data.access_token) {
-      return { statusCode: 400, body: JSON.stringify(data) };
+      return { statusCode: 400, headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) };
     }
 
     return {
