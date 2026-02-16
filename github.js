@@ -1,3 +1,18 @@
+(function () {
+  const box = document.createElement("pre");
+  box.style.cssText = "position:fixed;left:8px;right:8px;bottom:8px;max-height:35vh;overflow:auto;background:#111;color:#0f0;padding:10px;border-radius:10px;z-index:99999;font-size:12px;opacity:.92;";
+  box.textContent = "debug: ok\n";
+  document.addEventListener("DOMContentLoaded", () => document.body.appendChild(box));
+
+  function log(x) {
+    box.textContent += (x?.stack || x?.message || String(x)) + "\n\n";
+  }
+
+  window.addEventListener("error", (e) => log(e.error || e.message));
+  window.addEventListener("unhandledrejection", (e) => log(e.reason));
+})();
+
+
 const GH = (() => {
   // TODO: nastav na tvoje repo
   const OWNER = "lorot19";
