@@ -293,8 +293,24 @@ document.addEventListener("DOMContentLoaded", async () => {
   });
 
   // init
+  // init
   clearForm();
-  await loadGeoJSON();
-  await refreshUser();
+
+  try {
+    await loadGeoJSON();
+  } catch (e) {
+    console.error("GeoJSON load error:", e);
+    alert("Nepodarilo sa načítať GeoJSON. Skontroluj cestu v GH.FILE_PATH a že súbor existuje v repozitári.");
+  }
+
+  try {
+    await refreshUser();
+  } catch (e) {
+    console.error("Auth/user refresh error:", e);
+  }
+
   updateDirtyUI();
+
+  // keď je mapa v rozložení, občas pomôže:
+  setTimeout(() => map.invalidateSize(), 200);
 });
