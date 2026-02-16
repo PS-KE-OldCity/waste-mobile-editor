@@ -1,6 +1,6 @@
 const GH = (() => {
   // TODO: nastav na tvoje repo
-  const OWNER = "PS-KE-OldCity";
+  const OWNER = "lorot19";
   const REPO = "waste-mobile-editor";
   const FILE_PATH = "data/kosice_waste_sites_v2.geojson";
   const BASE_BRANCH = "main";
