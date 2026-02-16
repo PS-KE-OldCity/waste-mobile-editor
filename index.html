@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="sk">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>GeoJSON Mobile Editor</title>
+
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">GeoJSON Editor</div>
+
+    <div class="actions">
+      <span id="userBadge" class="badge">Neprihlásený</span>
+      <button id="loginBtn" type="button">GitHub login</button>
+      <button id="logoutBtn" type="button" hidden>Logout</button>
+      <button id="commitBtn" type="button" disabled>Commit</button>
+    </div>
+  </header>
+
+  <main class="layout">
+    <section id="map"></section>
+
+    <section class="panel">
+      <div class="panelHeader">
+        <div class="panelTitle">
+          <div class="title" id="selTitle">Vyber bod</div>
+          <div class="subtitle" id="selSub">Klikni na marker na mape</div>
+        </div>
+        <div class="panelBtns">
+          <button id="locateBtn" type="button">Moja poloha</button>
+          <button id="centerSelBtn" type="button" disabled>Centrovať</button>
+        </div>
+      </div>
+
+      <div class="coords">
+        <div><b>Lat:</b> <span id="latVal">—</span></div>
+        <div><b>Lng:</b> <span id="lngVal">—</span></div>
+        <button id="snapToGpsBtn" type="button" disabled>Presuň na GPS</button>
+        <span class="badge" id="dirtyBadge">Zmeny: 0</span>
+      </div>
+
+      <form id="editForm" class="form" autocomplete="off">
+        <div class="hint">Po výbere markeru sa tu zobrazia properties.</div>
+      </form>
+    </section>
+  </main>
+
+  <!-- Commit modal -->
+  <dialog id="commitDialog" class="dialog">
+    <form method="dialog" class="dialogForm">
+      <h3>Commit zmeny</h3>
+      <p id="commitSummary"></p>
+
+      <label>Commit message</label>
+      <input id="commitMsg" required placeholder="napr. Fix: upravené 10 stanovíšť" />
+
+      <div class="dialogActions">
+        <button value="cancel">Zrušiť</button>
+        <button id="doCommitBtn" value="ok">Vytvoriť PR</button>
+      </div>
+
+      <p class="small">
+        Vytvorí sa branch + commit + Pull Request do <code>main</code>.
+      </p>
+    </form>
+  </dialog>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="auth.js"></script>
+  <script src="github.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="sk">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>GitHub OAuth Callback</title>
+  <style>body{font-family:system-ui;padding:20px}</style>
+</head>
+<body>
+  <p>Prihlasujem…</p>
+  <script src="auth.js"></script>
+  <script>
+    (async () => {
+      try {
+        await Auth.finishLogin();
+        window.location.href = "/";
+      } catch (e) {
+        document.body.innerHTML = "<p>Chyba pri prihlasovaní. Skús znova.</p>";
+        console.error(e);
+      }
+    })();
+  </script>
+</body>
+</html>

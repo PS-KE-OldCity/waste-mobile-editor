@@ -1,0 +1,31 @@
+.badge{
+  background:#2e4256;
+  color:#fff;
+  padding:6px 10px;
+  border-radius:999px;
+  font-size:12px;
+  white-space:nowrap;
+}
+
+.dialog{
+  border:0;
+  border-radius:16px;
+  padding:0;
+  width:min(520px, 92vw);
+}
+.dialogForm{
+  padding:16px;
+  background:#fff;
+}
+.dialogForm input{
+  width:100%;
+  box-sizing:border-box;
+  margin:6px 0 10px;
+}
+.dialogActions{
+  display:flex;
+  justify-content:flex-end;
+  gap:8px;
+  margin-top:10px;
+}
+.small{font-size:12px; opacity:.75;}
