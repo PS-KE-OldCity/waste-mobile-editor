@@ -19,6 +19,40 @@ document.addEventListener("DOMContentLoaded", async () => {
   const commitSummary = document.getElementById("commitSummary");
   const commitMsg = document.getElementById("commitMsg");
   const doCommitBtn = document.getElementById("doCommitBtn");
+  const refreshBtn = document.getElementById("refreshBtn");
+
+    if (refreshBtn) {
+    refreshBtn.addEventListener("click", async () => {
+      refreshBtn.disabled = true;
+      try {
+        dirtyIds.clear();
+        movedCount = 0;
+        updateDirtyUI();
+        await loadGeoJSON();
+        alert("GeoJSON načítaný nanovo.");
+      } catch (e) {
+        console.error(e);
+        alert("Refresh zlyhal. Pozri Console.");
+      } finally {
+        refreshBtn.disabled = false;
+      }
+    });
+  }
+  try {
+    // vyčisti lokálne zmeny, lebo reload prepisuje stav
+    dirtyIds.clear();
+    movedCount = 0;
+    updateDirtyUI();
+
+    await loadGeoJSON();
+    alert("GeoJSON načítaný nanovo.");
+  } catch (e) {
+    console.error(e);
+    alert("Refresh zlyhal. Pozri Console.");
+  } finally {
+    refreshBtn.disabled = false;
+  }
+});
 
   // Map
   const map = L.map("map").setView([48.7164, 21.2611], 13);
@@ -185,8 +219,16 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   async function loadGeoJSON() {
-    // načítame priamo z repa (statika)
-    const r = await fetch(GH.FILE_PATH, { cache: "no-store" });
+  // cache-bust aby sa po merge načítala nová verzia
+  const url = `/${GH.FILE_PATH}?v=${Date.now()}`;
+  const r = await fetch(url, { cache: "no-store" });
+  if (!r.ok) throw new Error(`GeoJSON load failed: ${r.status}`);
+
+  geojsonData = await r.json();
+  if (geojsonData.type !== "FeatureCollection") throw new Error("Not a FeatureCollection");
+
+  drawFeatures();
+}
     if (!r.ok) throw new Error("GeoJSON load failed");
     geojsonData = await r.json();
     if (geojsonData.type !== "FeatureCollection") throw new Error("Not a FeatureCollection");
