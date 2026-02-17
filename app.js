@@ -3,71 +3,69 @@ document.addEventListener("DOMContentLoaded", async () => {
   const form = document.getElementById("editForm");
 
   const locateBtn = document.getElementById("locateBtn");
-  const mapToggleBtn = document.getElementById("mapToggleBtn");
-  const centerSelBtn = document.getElementById("centerSelBtn");
-  const snapToGpsBtn = document.getElementById("snapToGpsBtn");
+  const newSiteBtn = document.getElementById("newSiteBtn");
+  const clearSelBtn = document.getElementById("clearSelBtn");
 
-  const selTitle = document.getElementById("selTitle");
-  const selSub = document.getElementById("selSub");
-  const latVal = document.getElementById("latVal");
-  const lngVal = document.getElementById("lngVal");
-  const dirtyBadge = document.getElementById("dirtyBadge");
+  const refreshBtn = document.getElementById("refreshBtn");
+  const commitBtn = document.getElementById("commitBtn");
+  const diffBtn = document.getElementById("diffBtn");
+  const dirtyBadgeBtn = document.getElementById("dirtyBadge");
 
   const loginBtn = document.getElementById("loginBtn");
   const logoutBtn = document.getElementById("logoutBtn");
   const userBadge = document.getElementById("userBadge");
 
-  const newSiteBtn = document.getElementById("newSiteBtn");
-  const deleteSiteBtn = document.getElementById("deleteSiteBtn");
-  const refreshBtn = document.getElementById("refreshBtn");
-  const commitBtn = document.getElementById("commitBtn");
+  const selTitle = document.getElementById("selTitle");
+  const selSub = document.getElementById("selSub");
+  const latVal = document.getElementById("latVal");
+  const lngVal = document.getElementById("lngVal");
+
+  const diffDialog = document.getElementById("diffDialog");
+  const diffBody = document.getElementById("diffBody");
 
   const commitDialog = document.getElementById("commitDialog");
   const commitSummary = document.getElementById("commitSummary");
   const commitMsg = document.getElementById("commitMsg");
 
-  const addContainerDialog = document.getElementById("addContainerDialog");
-  const containerTypeGrid = document.getElementById("containerTypeGrid");
-  const containerVolume = document.getElementById("containerVolume");
-  const containerCount = document.getElementById("containerCount");
-
   // ===== Map =====
   if (!window.L) {
-    alert("Leaflet nie je načítaný. Skontroluj <script leaflet.js> v index.html.");
+    alert("Leaflet nie je načítaný.");
     return;
   }
 
-  const map = L.map("map").setView([48.7164, 21.2611], 13);
+  const map = L.map("map", { zoomControl: false }).setView([48.7164, 21.2611], 13);
   L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19 }).addTo(map);
   const markersLayer = L.layerGroup().addTo(map);
 
   // ===== State =====
   let geojsonData = null;
+  let originalSnapshot = null; // deep copy of last loaded file (for diff)
   let selectedFeature = null;
   let selectedMarker = null;
   let selectedIdx = null;
 
-  let lastGpsLatLng = null;
-  let gpsMarker = null;
-
-  const dirtyIds = new Set();
+  const dirtyKeys = new Set(); // feature keys + "__file__"
   let movedCount = 0;
 
-  // map selection lookup after redraw
-  let markerByKey = new Map();
+  // Map markers by key
+  const markerByKey = new Map();
 
-  // ===== Container presets =====
-  // (ak chcete iné default litre, stačí zmeniť tu)
-  const CONTAINER_PRESETS = [
-    { key: "glass", label: "Sklo", defaultVolume: 1100 },
-    { key: "mixed", label: "Zmes", defaultVolume: 1100 },
-    { key: "plastic", label: "Plast", defaultVolume: 1100 },
-    { key: "paper", label: "Papier", defaultVolume: 1100 },
-    { key: "bio", label: "Bio", defaultVolume: 240 },
-    { key: "oil", label: "Olej", defaultVolume: 240 },
+  // ===== Container types for field work =====
+  // count-only UX (+/-). Liter defaults are prefilled.
+  const CONTAINERS = [
+    { key: "glass", label: "Sklo", liters: 1100, color: "#7fd3ff", icon: "◯" },
+    { key: "mixed", label: "Zmes", liters: 1100, color: "#c9c9c9", icon: "■" },
+    { key: "plastic", label: "Plast", liters: 1100, color: "#ffd36a", icon: "△" },
+    { key: "paper", label: "Papier", liters: 1100, color: "#79a7ff", icon: "▤" },
+    { key: "bio", label: "Bio", liters: 240, color: "#9be59b", icon: "✿" },
+    { key: "oil", label: "Olej", liters: 240, color: "#ff9a6a", icon: "滴" },
   ];
 
   // ===== Helpers =====
+  function deepCopy(obj) {
+    return JSON.parse(JSON.stringify(obj));
+  }
+
   function ensureId(feature) {
     const p = (feature.properties ||= {});
     if (!p.site_id) {
@@ -80,37 +78,64 @@ document.addEventListener("DOMContentLoaded", async () => {
     return p.site_id || p.id || feature.id || `idx:${idx}`;
   }
 
-  function isPlainObject(v) {
+  function setEditing(on) {
+    document.body.classList.toggle("editing", !!on);
+    setTimeout(() => map.invalidateSize(), 180);
+  }
+
+  function isObj(v) {
     return v !== null && typeof v === "object" && !Array.isArray(v);
   }
 
-  function markDirty(feature, idx) {
-    dirtyIds.add(featureKey(feature, idx));
-    updateDirtyUI();
+  function normalizeContainers(p) {
+    if (!Array.isArray(p.containers)) p.containers = [];
+    // normalize to {fraction, label, volume_l, count}
+    p.containers = p.containers.map((c) => {
+      if (!isObj(c)) return null;
+      const fraction = (c.fraction ?? c.waste ?? c.type ?? "").toString();
+      const label = (c.label ?? "").toString() || fraction;
+      const volume_l = Number(c.volume_l ?? c.volume ?? c.liters ?? 0) || 0;
+      const count = Number(c.count ?? 1) || 1;
+      return { ...c, fraction, label, volume_l, count };
+    }).filter(Boolean);
   }
 
-  function markFileDirty() {
-    dirtyIds.add("__file__");
-    updateDirtyUI();
+  function getContainerCount(p, key) {
+    normalizeContainers(p);
+    const found = p.containers.find(x => x.fraction === key);
+    return found ? (Number(found.count) || 0) : 0;
   }
 
-  function updateDirtyUI() {
-    if (dirtyBadge) dirtyBadge.textContent = `Zmeny: ${dirtyIds.size}`;
-    if (commitBtn) commitBtn.disabled = !(Auth.getToken() && dirtyIds.size > 0);
+  function setContainerCount(p, key, label, liters, newCount) {
+    normalizeContainers(p);
+    const i = p.containers.findIndex(x => x.fraction === key);
+    if (newCount <= 0) {
+      if (i >= 0) p.containers.splice(i, 1);
+      return;
+    }
+    const obj = { fraction: key, label, volume_l: liters, count: newCount };
+    if (i >= 0) p.containers[i] = { ...p.containers[i], ...obj };
+    else p.containers.push(obj);
+  }
+
+  function updateCoordsUI(feature) {
+    const [lng, lat] = feature.geometry.coordinates;
+    if (latVal) latVal.textContent = Number(lat).toFixed(6);
+    if (lngVal) lngVal.textContent = Number(lng).toFixed(6);
   }
 
   function updateAuthUI(user) {
     const token = Auth.getToken();
     if (token && user) {
-      if (userBadge) userBadge.textContent = `@${user.login}`;
-      if (loginBtn) loginBtn.hidden = true;
-      if (logoutBtn) logoutBtn.hidden = false;
-      if (commitBtn) commitBtn.disabled = dirtyIds.size === 0;
+      userBadge.textContent = `@${user.login}`;
+      loginBtn.hidden = true;
+      logoutBtn.hidden = false;
+      commitBtn.disabled = dirtyKeys.size === 0;
     } else {
-      if (userBadge) userBadge.textContent = "Neprihlásený";
-      if (loginBtn) loginBtn.hidden = false;
-      if (logoutBtn) logoutBtn.hidden = true;
-      if (commitBtn) commitBtn.disabled = true;
+      userBadge.textContent = "Neprihlásený";
+      loginBtn.hidden = false;
+      logoutBtn.hidden = true;
+      commitBtn.disabled = true;
     }
   }
 
@@ -120,76 +145,159 @@ document.addEventListener("DOMContentLoaded", async () => {
     try {
       const user = await GH.getViewer(token);
       updateAuthUI(user);
-    } catch (e) {
-      console.error("refreshUser failed:", e);
+    } catch {
       Auth.logout();
       updateAuthUI(null);
     }
   }
 
-  function updateCoordsUI(feature) {
-    const [lng, lat] = feature.geometry.coordinates;
-    if (latVal) latVal.textContent = Number(lat).toFixed(6);
-    if (lngVal) lngVal.textContent = Number(lng).toFixed(6);
+  function setDirty(key) {
+    dirtyKeys.add(key);
+    updateDirtyUI();
+    updateMarkerStyle(key);
   }
 
-  function setEditingMode(on) {
-    document.body.classList.toggle("editing", !!on);
+  function clearDirtyAll() {
+    dirtyKeys.clear();
+    movedCount = 0;
+    updateDirtyUI();
+    // refresh marker colors
+    for (const k of markerByKey.keys()) updateMarkerStyle(k);
   }
 
-  function setMapExpanded(on) {
-    document.body.classList.toggle("mapExpanded", !!on);
-    if (mapToggleBtn) mapToggleBtn.textContent = document.body.classList.contains("mapExpanded") ? "Viac edit" : "Viac mapy";
-    setTimeout(() => map.invalidateSize(), 220);
+  function updateDirtyUI() {
+    const count = [...dirtyKeys].filter(k => k !== "__file__").length || (dirtyKeys.size ? 1 : 0);
+    if (dirtyBadgeBtn) dirtyBadgeBtn.textContent = `Zmeny: ${count}`;
+    if (diffBtn) diffBtn.disabled = dirtyKeys.size === 0;
+    if (dirtyBadgeBtn) dirtyBadgeBtn.disabled = dirtyKeys.size === 0;
+    if (commitBtn) commitBtn.disabled = !(Auth.getToken() && dirtyKeys.size > 0);
+  }
+
+  function makeDivIcon(isDirty) {
+    // simple dot marker (blue / red)
+    const color = isDirty ? "#d32f2f" : "#1e88e5";
+    const html = `
+      <div style="
+        width:18px;height:18px;border-radius:999px;
+        background:${color};
+        border:2px solid rgba(255,255,255,0.95);
+        box-shadow:0 2px 8px rgba(0,0,0,0.35);
+      "></div>`;
+    return L.divIcon({ className: "", html, iconSize: [18, 18], iconAnchor: [9, 9] });
+  }
+
+  function updateMarkerStyle(key) {
+    const entry = markerByKey.get(key);
+    if (!entry) return;
+    const isDirty = dirtyKeys.has(key) || dirtyKeys.has("__file__");
+    entry.marker.setIcon(makeDivIcon(isDirty));
   }
 
   function clearSelectionUI() {
+    selectedFeature = null;
+    selectedMarker = null;
+    selectedIdx = null;
     if (selTitle) selTitle.textContent = "Vyber stanovište";
-    if (selSub) selSub.textContent = "Klikni na marker alebo vytvor nové.";
+    if (selSub) selSub.textContent = "Klikni na marker v mape.";
     if (latVal) latVal.textContent = "—";
     if (lngVal) lngVal.textContent = "—";
-    if (centerSelBtn) centerSelBtn.disabled = true;
-    if (snapToGpsBtn) snapToGpsBtn.disabled = true;
-
-    if (deleteSiteBtn) { deleteSiteBtn.hidden = true; deleteSiteBtn.disabled = true; }
-    setEditingMode(false);
+    setEditing(false);
 
     if (form) {
       form.innerHTML = `<div class="hint">
         Terénny flow:<br/>
-        1) Skontroluj GPS (Moja poloha / Presuň na GPS)<br/>
-        2) Vyber typ stanovišťa + zamok<br/>
-        3) Pridaj nádoby cez “+ Nádoba”<br/>
-        4) Označ “Skontrolované”
+        1) Klikni na stanovište (marker)<br/>
+        2) Skontroluj GPS (ťahaj marker ak treba)<br/>
+        3) Uprav názov/poznámku, typ, zámok<br/>
+        4) Klikaj +/− na nádoby<br/>
+        5) Označ “Skontrolované”
       </div>`;
     }
   }
 
-  // ===== UI builders =====
-  function mkSection(title, rightEl = null) {
-    const s = document.createElement("div");
-    s.className = "section";
+  // ===== Simple diff =====
+  function findOriginalFeatureByKey(key) {
+    if (!originalSnapshot?.features) return null;
+    const f = originalSnapshot.features.find((ft, idx) => featureKey(ft, idx) === key);
+    return f || null;
+  }
 
-    const head = document.createElement("div");
-    head.className = "sectionTitle";
-    head.textContent = title;
+  function summarizeChangesForFeature(current, original) {
+    const changes = [];
 
-    if (rightEl) {
-      head.textContent = "";
-      const left = document.createElement("div");
-      left.textContent = title;
-      left.style.fontWeight = "900";
-      const wrap = document.createElement("div");
-      wrap.style.display = "flex";
-      wrap.style.alignItems = "center";
-      wrap.style.justifyContent = "space-between";
-      wrap.style.width = "100%";
-      wrap.appendChild(left);
-      wrap.appendChild(rightEl);
-      head.appendChild(wrap);
+    // coords
+    const c1 = current?.geometry?.coordinates;
+    const c0 = original?.geometry?.coordinates;
+    if (Array.isArray(c1) && Array.isArray(c0) && (c1[0] !== c0[0] || c1[1] !== c0[1])) {
+      changes.push(`coordinates: [${c0[0]}, ${c0[1]}] → [${c1[0]}, ${c1[1]}]`);
     }
 
-    s.appendChild(head);
+    const p1 = current?.properties || {};
+    const p0 = original?.properties || {};
+
+    const KEYS = [
+      "name", "note",
+      "site_kind", "has_lock",
+      "verified", "accessible",
+      "cleanliness", "wear", "issues"
+    ];
+
+    for (const k of KEYS) {
+      const a = p0[k];
+      const b = p1[k];
+      if (JSON.stringify(a) !== JSON.stringify(b)) {
+        changes.push(`${k}: ${JSON.stringify(a)} → ${JSON.stringify(b)}`);
+      }
+    }
+
+    // containers summary
+    const cont0 = (p0.containers || []).map(x => ({ fraction: x.fraction ?? x.waste ?? x.type, count: x.count ?? 1, volume_l: x.volume_l ?? x.volume ?? x.liters })).sort((a,b)=>String(a.fraction).localeCompare(String(b.fraction)));
+    const cont1 = (p1.containers || []).map(x => ({ fraction: x.fraction ?? x.waste ?? x.type, count: x.count ?? 1, volume_l: x.volume_l ?? x.volume ?? x.liters })).sort((a,b)=>String(a.fraction).localeCompare(String(b.fraction)));
+    if (JSON.stringify(cont0) !== JSON.stringify(cont1)) {
+      changes.push(`containers: ${JSON.stringify(cont0)} → ${JSON.stringify(cont1)}`);
+    }
+
+    return changes;
+  }
+
+  function openDiffDialog() {
+    if (!diffDialog || !diffBody) return;
+
+    diffBody.innerHTML = "";
+
+    const keys = [...dirtyKeys].filter(k => k !== "__file__");
+    if (keys.length === 0 && dirtyKeys.size > 0) {
+      const d = document.createElement("div");
+      d.className = "diffItem";
+      d.innerHTML = `<b>Zmeny</b><div class="kv">Zmeny na súbore (pridané/odstránené stanovištia alebo iné štrukturálne zmeny).</div>`;
+      diffBody.appendChild(d);
+    }
+
+    for (const key of keys) {
+      const entry = markerByKey.get(key);
+      const current = entry?.feature || null;
+      const original = findOriginalFeatureByKey(key);
+
+      const title = (current?.properties?.name || current?.properties?.site_id || key);
+      const changes = original ? summarizeChangesForFeature(current, original) : ["(nové stanovište alebo nenájdený originál)"];
+
+      const box = document.createElement("div");
+      box.className = "diffItem";
+      box.innerHTML = `<b>${title}</b><div class="kv">${changes.join("\n")}</div>`;
+      diffBody.appendChild(box);
+    }
+
+    diffDialog.showModal();
+  }
+
+  // ===== Form UI (field work) =====
+  function mkSection(title) {
+    const s = document.createElement("div");
+    s.className = "section";
+    const h = document.createElement("div");
+    h.className = "sectionTitle";
+    h.textContent = title;
+    s.appendChild(h);
     return s;
   }
 
@@ -203,7 +311,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     return row;
   }
 
-  function mkInput(value, onInput, placeholder = "") {
+  function mkInput(value, onInput, placeholder="") {
     const input = document.createElement("input");
     input.value = (value ?? "").toString();
     if (placeholder) input.placeholder = placeholder;
@@ -232,77 +340,38 @@ document.addEventListener("DOMContentLoaded", async () => {
     return sel;
   }
 
-  function mkYesNo(value, onChange) {
-    return mkSelect(
-      value === true ? "yes" : value === false ? "no" : "",
-      [
-        { value: "", label: "—" },
-        { value: "yes", label: "Áno" },
-        { value: "no", label: "Nie" }
-      ],
-      (v) => onChange(v === "yes" ? true : v === "no" ? false : null)
-    );
+  function mkToggleButton(isOn, textOff, textOn, onToggle) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = `toggleBtn ${isOn ? "on" : ""}`;
+    b.textContent = isOn ? textOn : textOff;
+    b.addEventListener("click", () => onToggle(!isOn));
+    return b;
   }
 
-  function normalizeContainers(p) {
-    if (!Array.isArray(p.containers)) p.containers = [];
-  }
+  function mkRange(value, min, max, step, onInput) {
+    const wrap = document.createElement("div");
+    wrap.className = "rangeWrap";
 
-  function renderContainersList(p, feature, idx, containerListEl) {
-    containerListEl.innerHTML = "";
-    if (p.containers.length === 0) {
-      const hint = document.createElement("div");
-      hint.className = "hint";
-      hint.textContent = "Zatiaľ žiadne nádoby. Klikni “+ Nádoba”.";
-      containerListEl.appendChild(hint);
-      return;
-    }
+    const r = document.createElement("input");
+    r.type = "range";
+    r.min = String(min);
+    r.max = String(max);
+    r.step = String(step);
+    r.value = String(value ?? min);
 
-    p.containers.forEach((c, cIdx) => {
-      if (!isPlainObject(c)) c = p.containers[cIdx] = {};
+    const v = document.createElement("div");
+    v.className = "rangeVal";
+    v.textContent = r.value;
 
-      // tolerantné mapovanie fieldov (aby sme sa vedeli prispôsobiť tvojmu geojsonu)
-      const fraction = (c.fraction ?? c.waste ?? c.type ?? "").toString();
-      const vol = (c.volume_l ?? c.volume ?? c.liters ?? "").toString();
-      const count = (c.count ?? 1);
-
-      const item = document.createElement("div");
-      item.className = "containerItem";
-
-      const main = document.createElement("div");
-      main.className = "containerMain";
-
-      const t = document.createElement("div");
-      t.className = "containerTitle";
-      t.textContent = fraction || `Nádoba #${cIdx + 1}`;
-
-      const meta = document.createElement("div");
-      meta.className = "containerMeta";
-      meta.textContent = `${count} ks • ${vol ? vol + " l" : "objem ?"}`;
-
-      main.appendChild(t);
-      main.appendChild(meta);
-
-      const btns = document.createElement("div");
-      btns.className = "containerBtns";
-
-      const minus = document.createElement("button");
-      minus.type = "button";
-      minus.className = "iconBtn danger";
-      minus.textContent = "−";
-      minus.addEventListener("click", () => {
-        p.containers.splice(cIdx, 1);
-        markDirty(feature, idx);
-        markFileDirty();
-        buildForm(feature, idx);
-      });
-
-      btns.appendChild(minus);
-      item.appendChild(main);
-      item.appendChild(btns);
-
-      containerListEl.appendChild(item);
+    r.addEventListener("input", () => {
+      v.textContent = r.value;
+      onInput(Number(r.value));
     });
+
+    wrap.appendChild(r);
+    wrap.appendChild(v);
+    return wrap;
   }
 
   function buildForm(feature, idx) {
@@ -312,184 +381,235 @@ document.addEventListener("DOMContentLoaded", async () => {
     const p = (feature.properties ||= {});
     normalizeContainers(p);
 
-    // Minimal visible fields for field work
-    // - GPS controls are in header
-    // - Visible: popis + typ stanovišťa + zamok + nádoby + skontrolované
-    // - Advanced: site_id, address, district, city, operator + raw JSON
-
     form.innerHTML = "";
 
-    // SECTION: Quick edit
+    // QUICK: name + note
     const sQuick = mkSection("Rýchle údaje");
     {
-      const desc = mkTextarea(p.description ?? p.note ?? "", (v) => {
-        // keep both if you want; keep note as canonical
-        p.note = v;
-        p.description = v;
-        markDirty(feature, idx);
-      }, 3);
-      sQuick.appendChild(mkRow("Popis / poznámka", desc));
+      const name = mkInput(p.name ?? "", (v) => { p.name = v; setDirty(featureKey(feature, idx)); if (selTitle) selTitle.textContent = v || (p.site_id || "Vybraný bod"); });
+      sQuick.appendChild(mkRow("Názov", name));
 
-      const siteKind = mkSelect(
-        p.site_kind ?? p.kind ?? "",
-        [
-          { value: "", label: "Typ stanovišťa (vyber)" },
-          { value: "open", label: "Otvorené" },
-          { value: "closed", label: "Zatvorené" },
-          { value: "underground", label: "Podzemné" },
-          { value: "semi_underground", label: "Polopodzemné" }
-        ],
-        (v) => {
-          p.site_kind = v;
-          p.kind = v;
-          markDirty(feature, idx);
-        }
-      );
-      sQuick.appendChild(mkRow("Typ", siteKind));
-
-      const hasLock = mkYesNo(
-        (p.has_lock ?? p.locked ?? null),
-        (val) => {
-          // store both for compatibility
-          p.has_lock = val;
-          p.locked = val;
-          markDirty(feature, idx);
-        }
-      );
-      sQuick.appendChild(mkRow("Zámok", hasLock));
+      const note = mkTextarea(p.note ?? "", (v) => { p.note = v; setDirty(featureKey(feature, idx)); }, 3);
+      sQuick.appendChild(mkRow("Poznámka", note));
     }
     form.appendChild(sQuick);
 
-    // SECTION: Containers
-    const addBtn = document.createElement("button");
-    addBtn.type = "button";
-    addBtn.className = "iconBtn";
-    addBtn.textContent = "+ Nádoba";
-    addBtn.addEventListener("click", () => openAddContainerDialog(feature, idx));
+    // STATUS: type + lock (dropdowns)
+    const sStatus = mkSection("Stanovište");
+    {
+      const kind = mkSelect(
+        p.site_kind ?? "",
+        [
+          { value: "", label: "Typ (vyber)" },
+          { value: "open", label: "Otvorené" },
+          { value: "closed", label: "Zatvorené" },
+          { value: "underground", label: "Podzemné" },
+          { value: "semi_underground", label: "Polopodzemné" },
+        ],
+        (v) => { p.site_kind = v; setDirty(featureKey(feature, idx)); }
+      );
+      sStatus.appendChild(mkRow("Typ", kind));
 
-    const sCont = mkSection("Nádoby", addBtn);
-    const list = document.createElement("div");
-    list.className = "containerList";
-    renderContainersList(p, feature, idx, list);
-    sCont.appendChild(list);
+      const lock = mkSelect(
+        (p.has_lock === true) ? "yes" : (p.has_lock === false) ? "no" : "",
+        [
+          { value: "", label: "Zámok (vyber)" },
+          { value: "yes", label: "Má zámok" },
+          { value: "no", label: "Nemá zámok" },
+        ],
+        (v) => { p.has_lock = (v === "yes") ? true : (v === "no") ? false : null; setDirty(featureKey(feature, idx)); }
+      );
+      sStatus.appendChild(mkRow("Zámok", lock));
+    }
+    form.appendChild(sStatus);
 
-    const smallHint = document.createElement("div");
-    smallHint.className = "small";
-    smallHint.textContent = "Tip: pridávaj rýchlo cez typy (Sklo/Zmes/Plast/…).";
-    sCont.appendChild(smallHint);
+    // CONTAINERS: +/- counts
+    const sCont = mkSection("Nádoby (klikaj + / −)");
+    {
+      const grid = document.createElement("div");
+      grid.className = "containerGrid";
 
+      for (const t of CONTAINERS) {
+        const card = document.createElement("div");
+        card.className = "cCard";
+
+        const head = document.createElement("div");
+        head.className = "cHead";
+
+        const icon = document.createElement("div");
+        icon.className = "cIcon";
+        icon.style.background = t.color + "33";
+        icon.style.border = `1px solid ${t.color}`;
+        icon.innerHTML = `<span style="font-weight:900">${t.icon}</span>`;
+
+        const info = document.createElement("div");
+        const title = document.createElement("div");
+        title.className = "cTitle";
+        title.textContent = t.label;
+        const meta = document.createElement("div");
+        meta.className = "cMeta";
+        meta.textContent = `${t.liters} l (predvoľba)`;
+
+        info.appendChild(title);
+        info.appendChild(meta);
+
+        head.appendChild(icon);
+        head.appendChild(info);
+
+        const countRow = document.createElement("div");
+        countRow.className = "cCount";
+
+        const minus = document.createElement("button");
+        minus.type = "button";
+        minus.className = "pmBtn minus";
+        minus.textContent = "−";
+
+        const plus = document.createElement("button");
+        plus.type = "button";
+        plus.className = "pmBtn";
+        plus.textContent = "+";
+
+        const countSpan = document.createElement("span");
+        countSpan.textContent = String(getContainerCount(p, t.key));
+
+        const applyCount = (newCount) => {
+          setContainerCount(p, t.key, t.label, t.liters, newCount);
+          countSpan.textContent = String(getContainerCount(p, t.key));
+          setDirty(featureKey(feature, idx));
+        };
+
+        minus.addEventListener("click", () => applyCount(getContainerCount(p, t.key) - 1));
+        plus.addEventListener("click", () => applyCount(getContainerCount(p, t.key) + 1));
+
+        countRow.appendChild(minus);
+        countRow.appendChild(countSpan);
+        countRow.appendChild(plus);
+
+        card.appendChild(head);
+        card.appendChild(countRow);
+
+        grid.appendChild(card);
+      }
+
+      sCont.appendChild(grid);
+
+      const hint = document.createElement("div");
+      hint.className = "small";
+      hint.textContent = "Tip: Ak sú rôzne objemy, doplň to v Pokročilé (JSON).";
+      sCont.appendChild(hint);
+    }
     form.appendChild(sCont);
 
-    // SECTION: Verified
-    const sVer = mkSection("Kontrola");
+    // CHECK / ACCESSIBILITY / SLIDERS / ISSUES
+    const sCheck = mkSection("Kontrola");
     {
-      const checked = document.createElement("select");
-      const opts = [
-        { value: "", label: "—" },
-        { value: "yes", label: "Skontrolované" },
-        { value: "no", label: "Neskontrolované" },
-      ];
-      for (const o of opts) {
-        const opt = document.createElement("option");
-        opt.value = o.value; opt.textContent = o.label;
-        checked.appendChild(opt);
-      }
-      const current = (p.verified === true || p.checked === true) ? "yes" : (p.verified === false || p.checked === false) ? "no" : "";
-      checked.value = current;
-
-      checked.addEventListener("change", async () => {
-        const v = checked.value;
-        if (v === "yes") {
-          p.verified = true;
-          p.checked = true;
-          p.verified_at = new Date().toISOString();
-          try {
-            const token = Auth.getToken();
-            if (token) {
-              const user = await GH.getViewer(token);
-              p.verified_by = user.login;
-            }
-          } catch {}
-        } else if (v === "no") {
-          p.verified = false;
-          p.checked = false;
-        } else {
-          p.verified = null;
-          p.checked = null;
+      const verified = (p.verified === true);
+      const btn = mkToggleButton(
+        verified,
+        "Označiť ako skontrolované",
+        "Skontrolované ✓ (klikni pre zrušenie)",
+        async (next) => {
+          p.verified = next;
+          if (next) {
+            p.verified_at = new Date().toISOString();
+            try {
+              const token = Auth.getToken();
+              if (token) {
+                const user = await GH.getViewer(token);
+                p.verified_by = user.login;
+              }
+            } catch {}
+          }
+          setDirty(featureKey(feature, idx));
+          buildForm(feature, idx); // refresh button text
         }
-        markDirty(feature, idx);
-      });
+      );
+      sCheck.appendChild(btn);
 
-      sVer.appendChild(mkRow("Stav", checked));
+      const acc = mkSelect(
+        (p.accessible === true) ? "yes" : (p.accessible === false) ? "no" : "",
+        [
+          { value: "", label: "Bezbariérové? (vyber)" },
+          { value: "yes", label: "Áno" },
+          { value: "no", label: "Nie" },
+        ],
+        (v) => { p.accessible = (v === "yes") ? true : (v === "no") ? false : null; setDirty(featureKey(feature, idx)); }
+      );
+      sCheck.appendChild(mkRow("Bezbariérové", acc));
 
-      const verInfo = document.createElement("div");
-      verInfo.className = "small";
-      const at = p.verified_at ? ` • ${p.verified_at}` : "";
-      const by = p.verified_by ? ` • @${p.verified_by}` : "";
-      verInfo.textContent = (p.verified === true || p.checked === true) ? `Posledná kontrola${by}${at}` : "Zatiaľ nie je označené ako skontrolované.";
-      sVer.appendChild(verInfo);
+      const clean = (Number.isFinite(p.cleanliness) ? p.cleanliness : 3);
+      const wear = (Number.isFinite(p.wear) ? p.wear : 3);
+
+      sCheck.appendChild(mkRow("Index čistoty (0–5)", mkRange(clean, 0, 5, 1, (v) => { p.cleanliness = v; setDirty(featureKey(feature, idx)); })));
+      sCheck.appendChild(mkRow("Index opotrebenia (0–5)", mkRange(wear, 0, 5, 1, (v) => { p.wear = v; setDirty(featureKey(feature, idx)); })));
+
+      const issues = mkTextarea(p.issues ?? "", (v) => { p.issues = v; setDirty(featureKey(feature, idx)); }, 3);
+      sCheck.appendChild(mkRow("Závady / poznámky z terénu", issues));
+
+      const info = document.createElement("div");
+      info.className = "small";
+      if (p.verified === true) {
+        const by = p.verified_by ? `@${p.verified_by}` : "—";
+        const at = p.verified_at ? p.verified_at : "—";
+        info.textContent = `Posledná kontrola: ${by} • ${at}`;
+      } else {
+        info.textContent = "Zatiaľ nie je označené ako skontrolované.";
+      }
+      sCheck.appendChild(info);
     }
-    form.appendChild(sVer);
+    form.appendChild(sCheck);
 
-    // SECTION: Advanced (dropdown)
+    // ADVANCED (collapsed)
     const adv = document.createElement("details");
     adv.className = "section";
     adv.open = false;
     const sum = document.createElement("summary");
-    sum.textContent = "Pokročilé (ID, adresa, mestská časť, prevádzkovateľ, JSON)";
+    sum.textContent = "Pokročilé (ID/adresa/mestská časť/JSON)";
     adv.appendChild(sum);
 
     const body = document.createElement("div");
-    body.className = "sectionBody";
+    body.style.marginTop = "10px";
 
-    const siteId = mkInput(p.site_id, (v) => { p.site_id = v; markDirty(feature, idx); }, "site_id");
+    const siteId = mkInput(p.site_id ?? "", (v) => { p.site_id = v; setDirty(featureKey(feature, idx)); }, "site_id");
     body.appendChild(mkRow("ID (site_id)", siteId));
 
-    const addr = mkInput(p.address ?? "", (v) => { p.address = v; markDirty(feature, idx); }, "adresa");
+    const addr = mkInput(p.address ?? "", (v) => { p.address = v; setDirty(featureKey(feature, idx)); }, "adresa");
     body.appendChild(mkRow("Adresa", addr));
 
-    const dist = mkInput(p.district ?? "", (v) => { p.district = v; markDirty(feature, idx); }, "mestská časť");
+    const dist = mkInput(p.district ?? "", (v) => { p.district = v; setDirty(featureKey(feature, idx)); }, "mestská časť");
     body.appendChild(mkRow("Mestská časť", dist));
 
-    const city = mkInput(p.city ?? "Košice", (v) => { p.city = v; markDirty(feature, idx); }, "mesto");
-    body.appendChild(mkRow("Mesto", city));
-
-    const op = mkInput(p.operator ?? "", (v) => { p.operator = v; markDirty(feature, idx); }, "prevádzkovateľ");
-    body.appendChild(mkRow("Prevádzkovateľ", op));
-
-    // Raw JSON for anything else
     const raw = document.createElement("textarea");
     raw.rows = 10;
     raw.value = JSON.stringify(p, null, 2);
 
-    const rawErr = document.createElement("div");
-    rawErr.className = "small";
-    rawErr.style.color = "crimson";
-    rawErr.style.display = "none";
+    const err = document.createElement("div");
+    err.className = "small";
+    err.style.color = "crimson";
+    err.style.display = "none";
 
     raw.addEventListener("change", () => {
       try {
         const parsed = JSON.parse(raw.value);
-        if (!isPlainObject(parsed)) throw new Error("Must be object");
+        if (!isObj(parsed)) throw new Error("not object");
         feature.properties = parsed;
-        markDirty(feature, idx);
-        markFileDirty();
-        rawErr.style.display = "none";
+        setDirty(featureKey(feature, idx));
+        err.style.display = "none";
         buildForm(feature, idx);
       } catch {
-        rawErr.textContent = "Neplatný JSON – zmeny sa neuložili.";
-        rawErr.style.display = "block";
+        err.textContent = "Neplatný JSON – zmeny sa neuložili.";
+        err.style.display = "block";
       }
     });
 
     body.appendChild(mkRow("Properties (JSON)", raw));
-    body.appendChild(rawErr);
+    body.appendChild(err);
 
     adv.appendChild(body);
     form.appendChild(adv);
   }
 
-  // ===== Selection + draw =====
+  // ===== Draw & select =====
   function selectFeature(feature, marker, idx) {
     selectedFeature = feature;
     selectedMarker = marker;
@@ -499,32 +619,22 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     const p = feature.properties || {};
     if (selTitle) selTitle.textContent = p.name || p.site_id || "Vybraný bod";
-    if (selSub) selSub.textContent = "Skontroluj GPS → typ → zamok → nádoby → skontrolované.";
-
-    if (centerSelBtn) centerSelBtn.disabled = false;
-    if (snapToGpsBtn) snapToGpsBtn.disabled = (lastGpsLatLng === null);
-
-    if (deleteSiteBtn) { deleteSiteBtn.hidden = false; deleteSiteBtn.disabled = false; }
+    if (selSub) selSub.textContent = "Terénny režim: názov → typ/zámok → nádoby → kontrola.";
 
     updateCoordsUI(feature);
-    setEditingMode(true);
+    setEditing(true);
     buildForm(feature, idx);
 
-    // when you pick a site, default to more edit space
-    setMapExpanded(false);
+    // keep marker draggable and visible
   }
 
   function drawFeatures() {
     markersLayer.clearLayers();
-    markerByKey = new Map();
+    markerByKey.clear();
 
     selectedFeature = null;
     selectedMarker = null;
     selectedIdx = null;
-
-    if (deleteSiteBtn) { deleteSiteBtn.hidden = true; deleteSiteBtn.disabled = true; }
-    if (centerSelBtn) centerSelBtn.disabled = true;
-    if (snapToGpsBtn) snapToGpsBtn.disabled = true;
 
     clearSelectionUI();
 
@@ -537,20 +647,22 @@ document.addEventListener("DOMContentLoaded", async () => {
       const [lng, lat] = feature.geometry.coordinates;
       if (typeof lat !== "number" || typeof lng !== "number") return;
 
-      const marker = L.marker([lat, lng], { draggable: true }).addTo(markersLayer);
+      const key = featureKey(feature, idx);
+      const isDirty = dirtyKeys.has(key) || dirtyKeys.has("__file__");
+
+      const marker = L.marker([lat, lng], { draggable: true, icon: makeDivIcon(isDirty) }).addTo(markersLayer);
+
       marker.on("click", () => selectFeature(feature, marker, idx));
 
       marker.on("dragend", () => {
         const pos = marker.getLatLng();
         feature.geometry.coordinates = [pos.lng, pos.lat];
         movedCount += 1;
-        markDirty(feature, idx);
+        setDirty(key);
         if (selectedFeature === feature) updateCoordsUI(feature);
       });
 
-      const key = featureKey(feature, idx);
       markerByKey.set(key, { marker, feature, idx });
-
       latlngs.push([lat, lng]);
     });
 
@@ -561,154 +673,66 @@ document.addEventListener("DOMContentLoaded", async () => {
     const url = `/${GH.FILE_PATH}?v=${Date.now()}`;
     const r = await fetch(url, { cache: "no-store" });
     if (!r.ok) throw new Error(`GeoJSON load failed: ${r.status}`);
-
     geojsonData = await r.json();
     if (geojsonData.type !== "FeatureCollection" || !Array.isArray(geojsonData.features)) {
       throw new Error("Not a FeatureCollection");
     }
+    originalSnapshot = deepCopy(geojsonData);
     drawFeatures();
   }
 
-  // ===== Add container dialog =====
-  let pendingContainerType = null;
-
-  function openAddContainerDialog(feature, idx) {
-    if (!addContainerDialog) return;
-
-    const p = (feature.properties ||= {});
-    if (!Array.isArray(p.containers)) p.containers = [];
-
-    pendingContainerType = null;
-    containerVolume.value = "";
-    containerCount.value = "1";
-
-    containerTypeGrid.innerHTML = "";
-    for (const preset of CONTAINER_PRESETS) {
-      const b = document.createElement("button");
-      b.type = "button";
-      b.className = "typeBtn";
-      b.textContent = preset.label;
-      b.addEventListener("click", () => {
-        pendingContainerType = preset;
-        containerVolume.value = String(preset.defaultVolume ?? 1100);
-      });
-      containerTypeGrid.appendChild(b);
-    }
-
-    addContainerDialog.showModal();
-
-    addContainerDialog.addEventListener("close", () => {
-      if (addContainerDialog.returnValue !== "ok") return;
-
-      // require type
-      if (!pendingContainerType) {
-        alert("Najprv vyber typ nádoby.");
-        return;
-      }
-
-      const vol = Number(containerVolume.value);
-      const count = Math.max(1, Math.round(Number(containerCount.value || "1")));
-
-      const containerObj = {
-        fraction: pendingContainerType.key,
-        label: pendingContainerType.label,
-        volume_l: Number.isFinite(vol) ? vol : pendingContainerType.defaultVolume,
-        count
-      };
-
-      p.containers.push(containerObj);
-      markDirty(feature, idx);
-      markFileDirty();
-
-      buildForm(feature, idx);
-    }, { once: true });
-  }
-
-  // ===== Buttons =====
-  if (mapToggleBtn) {
-    mapToggleBtn.addEventListener("click", () => {
-      const on = !document.body.classList.contains("mapExpanded");
-      setMapExpanded(on);
-    });
-  }
-
+  // ===== Map controls =====
   if (locateBtn) {
     locateBtn.addEventListener("click", () => {
       map.locate({ setView: true, maxZoom: 18, watch: false, enableHighAccuracy: true });
     });
   }
 
-  map.on("locationfound", (e) => {
-    lastGpsLatLng = e.latlng;
-    if (!gpsMarker) gpsMarker = L.circleMarker(e.latlng, { radius: 8 }).addTo(map);
-    else gpsMarker.setLatLng(e.latlng);
-
-    if (snapToGpsBtn) snapToGpsBtn.disabled = !(selectedFeature && selectedMarker);
-  });
-
   map.on("locationerror", () => alert("Nepodarilo sa získať polohu."));
 
-  if (centerSelBtn) {
-    centerSelBtn.addEventListener("click", () => {
-      if (!selectedMarker) return;
-      map.setView(selectedMarker.getLatLng(), Math.max(map.getZoom(), 18));
-    });
-  }
-
-  if (snapToGpsBtn) {
-    snapToGpsBtn.addEventListener("click", () => {
-      if (!selectedFeature || !selectedMarker || !lastGpsLatLng || selectedIdx == null) return;
-      selectedMarker.setLatLng(lastGpsLatLng);
-      selectedFeature.geometry.coordinates = [lastGpsLatLng.lng, lastGpsLatLng.lat];
-      movedCount += 1;
-      markDirty(selectedFeature, selectedIdx);
-      updateCoordsUI(selectedFeature);
-    });
-  }
-
-  if (refreshBtn) {
-    refreshBtn.addEventListener("click", async () => {
-      refreshBtn.disabled = true;
-      try {
-        dirtyIds.clear();
-        movedCount = 0;
-        updateDirtyUI();
-        await loadGeoJSON();
-        alert("GeoJSON načítaný nanovo.");
-      } catch (e) {
-        console.error(e);
-        alert("Refresh zlyhal. Pozri Console.");
-      } finally {
-        refreshBtn.disabled = false;
-      }
-    });
-  }
+  map.on("locationfound", (e) => {
+    // show a small dot for gps
+    const ll = e.latlng;
+    // create/update
+    if (!window.__gpsDot) {
+      window.__gpsDot = L.circleMarker(ll, { radius: 6 }).addTo(map);
+    } else {
+      window.__gpsDot.setLatLng(ll);
+    }
+  });
 
   if (newSiteBtn) {
     newSiteBtn.addEventListener("click", () => {
       if (!geojsonData) return;
-
-      const pos = lastGpsLatLng || map.getCenter();
+      const center = map.getCenter();
 
       const f = {
         type: "Feature",
-        geometry: { type: "Point", coordinates: [pos.lng, pos.lat] },
+        geometry: { type: "Point", coordinates: [center.lng, center.lat] },
         properties: {
           site_id: `site_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`,
+          name: "",
           note: "",
           site_kind: "",
           has_lock: null,
           containers: [],
-          verified: null
+          verified: false,
+          accessible: null,
+          cleanliness: 3,
+          wear: 3,
+          issues: ""
         }
       };
 
       geojsonData.features.push(f);
-      markFileDirty();
+      dirtyKeys.add("__file__");
+      const key = featureKey(f, geojsonData.features.length - 1);
+      dirtyKeys.add(key);
+      updateDirtyUI();
 
       drawFeatures();
 
-      // select newly created by reference
+      // select new one by reference
       const found = [...markerByKey.values()].find(x => x.feature === f);
       if (found) {
         map.setView(found.marker.getLatLng(), Math.max(map.getZoom(), 18));
@@ -717,17 +741,30 @@ document.addEventListener("DOMContentLoaded", async () => {
     });
   }
 
-  if (deleteSiteBtn) {
-    deleteSiteBtn.addEventListener("click", () => {
-      if (!geojsonData || selectedIdx == null || !selectedFeature) return;
+  if (clearSelBtn) {
+    clearSelBtn.addEventListener("click", () => {
+      clearSelectionUI();
+    });
+  }
 
-      const p = selectedFeature.properties || {};
-      const label = p.name || p.site_id || "toto stanovište";
-      if (!confirm(`Naozaj vymazať ${label}?`)) return;
+  // ===== Diff =====
+  if (diffBtn) diffBtn.addEventListener("click", openDiffDialog);
+  if (dirtyBadgeBtn) dirtyBadgeBtn.addEventListener("click", openDiffDialog);
 
-      geojsonData.features.splice(selectedIdx, 1);
-      markFileDirty();
-      drawFeatures();
+  // ===== Refresh =====
+  if (refreshBtn) {
+    refreshBtn.addEventListener("click", async () => {
+      refreshBtn.disabled = true;
+      try {
+        await loadGeoJSON();
+        clearDirtyAll();
+        alert("Načítané najnovšie dáta.");
+      } catch (e) {
+        console.error(e);
+        alert("Refresh zlyhal. Pozri Console.");
+      } finally {
+        refreshBtn.disabled = false;
+      }
     });
   }
 
@@ -741,14 +778,12 @@ document.addEventListener("DOMContentLoaded", async () => {
     });
   }
 
-  // ===== Commit =====
+  // ===== Commit workflow =====
   if (commitBtn) {
     commitBtn.addEventListener("click", () => {
       if (!commitDialog) return;
-      if (commitSummary) {
-        commitSummary.textContent = `Zmeny: ${dirtyIds.size} • presuny: ${movedCount} • features: ${geojsonData?.features?.length ?? "?"}`;
-      }
-      if (commitMsg) commitMsg.value = `Fix: terénna kontrola (${dirtyIds.size})`;
+      commitSummary.textContent = `Zmeny: ${dirtyKeys.size} • presuny: ${movedCount} • features: ${geojsonData?.features?.length ?? "?"}`;
+      commitMsg.value = `Fix: terénna kontrola (${dirtyKeys.size})`;
       commitDialog.showModal();
     });
   }
@@ -763,7 +798,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       const msg = (commitMsg?.value || "").trim();
       if (!msg) return;
 
-      if (commitBtn) commitBtn.disabled = true;
+      commitBtn.disabled = true;
 
       try {
         const baseSha = await GH.getRefSha(token, GH.BASE_BRANCH);
@@ -783,12 +818,12 @@ document.addEventListener("DOMContentLoaded", async () => {
           token,
           branch,
           msg,
-          `Editor: @${user.login}\nZmeny: ${dirtyIds.size}\nPresuny: ${movedCount}\nFeatures: ${geojsonData.features.length}`
+          `Editor: @${user.login}\nZmeny: ${dirtyKeys.size}\nPresuny: ${movedCount}\nFeatures: ${geojsonData.features.length}`
         );
 
-        dirtyIds.clear();
-        movedCount = 0;
-        updateDirtyUI();
+        // reset dirty + refresh original snapshot baseline
+        originalSnapshot = deepCopy(geojsonData);
+        clearDirtyAll();
 
         alert(`Hotovo! PR: ${pr.html_url}\nPo merge klikni Refresh.`);
       } catch (err) {
@@ -818,6 +853,5 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   updateDirtyUI();
-  setMapExpanded(true);
   setTimeout(() => map.invalidateSize(), 250);
 });

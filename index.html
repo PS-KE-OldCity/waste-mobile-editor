@@ -13,6 +13,10 @@
     <div class="brand">Waste Editor</div>
 
     <div class="topActions">
+      <button id="diffBtn" type="button" class="ghost" disabled>Zmeny</button>
+      <button id="refreshBtn" type="button" class="ghost">Refresh</button>
+      <button id="commitBtn" type="button" class="primary" disabled>Commit</button>
+
       <span id="userBadge" class="badge">Neprihlásený</span>
       <button id="loginBtn" type="button">Login</button>
       <button id="logoutBtn" type="button" hidden>Logout</button>
@@ -22,9 +26,19 @@
   <main class="layout">
     <section id="mapWrap">
       <div id="map"></div>
-      <div class="mapOverlay">
-        <button id="locateBtn" type="button" class="pill">Moja poloha</button>
-        <button id="mapToggleBtn" type="button" class="pill">Viac mapy</button>
+
+      <!-- Map controls -->
+      <div class="mapControls topRight">
+        <button id="locateBtn" type="button" class="mapBtn" title="Moja poloha">⌖</button>
+      </div>
+
+      <div class="mapControls bottomRight">
+        <button id="newSiteBtn" type="button" class="mapBtn big" title="Pridať stanovište">＋</button>
+      </div>
+
+      <!-- Tiny close when editing -->
+      <div class="mapControls topLeft editingOnly">
+        <button id="clearSelBtn" type="button" class="mapBtn" title="Zrušiť výber">✕</button>
       </div>
     </section>
 
@@ -32,23 +46,13 @@
       <div class="panelHeader">
         <div class="selInfo">
           <div id="selTitle" class="selTitle">Vyber stanovište</div>
-          <div id="selSub" class="selSub">Klikni na marker alebo vytvor nové.</div>
+          <div id="selSub" class="selSub">Klikni na marker v mape.</div>
+
           <div class="coordsRow">
             <span>lat <b id="latVal">—</b></span>
             <span>lng <b id="lngVal">—</b></span>
-            <span id="dirtyBadge" class="badge">Zmeny: 0</span>
+            <button id="dirtyBadge" type="button" class="badgeBtn" disabled>Zmeny: 0</button>
           </div>
-        </div>
-
-        <div class="headerBtns">
-          <button id="centerSelBtn" type="button" disabled>Centrovať</button>
-          <button id="snapToGpsBtn" type="button" disabled>Presuň na GPS</button>
-
-          <button id="newSiteBtn" type="button">+ Stanovište</button>
-          <button id="refreshBtn" type="button">Refresh</button>
-
-          <button id="commitBtn" type="button" disabled>Commit</button>
-          <button id="deleteSiteBtn" type="button" class="danger" hidden disabled>Vymazať</button>
         </div>
       </div>
 
@@ -56,33 +60,18 @@
     </section>
   </main>
 
-  <!-- Add Container dialog -->
-  <dialog id="addContainerDialog" class="dialog">
+  <!-- Diff dialog -->
+  <dialog id="diffDialog" class="dialog">
     <form method="dialog" class="dialogForm">
-      <h3>Pridať nádobu</h3>
-      <p class="small">Klikni na typ. Objem sa predvyplní, môžeš zmeniť.</p>
-
-      <div id="containerTypeGrid" class="typeGrid"></div>
-
-      <div class="rowInline">
-        <div class="row grow">
-          <label>Objem (l)</label>
-          <input id="containerVolume" type="number" min="0" step="1" />
-        </div>
-        <div class="row">
-          <label>Počet</label>
-          <input id="containerCount" type="number" min="1" step="1" value="1" />
-        </div>
-      </div>
-
+      <h3>Zmeny (diff)</h3>
+      <div id="diffBody" class="diffBody"></div>
       <div class="dialogActions">
-        <button value="cancel">Zrušiť</button>
-        <button id="addContainerOkBtn" value="ok">Pridať</button>
+        <button value="ok">Zavrieť</button>
       </div>
     </form>
   </dialog>
 
-  <!-- Commit modal -->
+  <!-- Commit dialog -->
   <dialog id="commitDialog" class="dialog">
     <form method="dialog" class="dialogForm">
       <h3>Commit & PR</h3>
