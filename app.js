@@ -1,5 +1,7 @@
 document.addEventListener("DOMContentLoaded", async () => {
+  // =========================
   // DOM
+  // =========================
   const form = document.getElementById("editForm");
   const locateBtn = document.getElementById("locateBtn");
   const centerSelBtn = document.getElementById("centerSelBtn");
@@ -14,63 +16,41 @@ document.addEventListener("DOMContentLoaded", async () => {
   const logoutBtn = document.getElementById("logoutBtn");
   const userBadge = document.getElementById("userBadge");
   const commitBtn = document.getElementById("commitBtn");
+  const refreshBtn = document.getElementById("refreshBtn");
 
   const commitDialog = document.getElementById("commitDialog");
   const commitSummary = document.getElementById("commitSummary");
   const commitMsg = document.getElementById("commitMsg");
-  const doCommitBtn = document.getElementById("doCommitBtn");
-  const refreshBtn = document.getElementById("refreshBtn");
 
-    if (refreshBtn) {
-    refreshBtn.addEventListener("click", async () => {
-      refreshBtn.disabled = true;
-      try {
-        dirtyIds.clear();
-        movedCount = 0;
-        updateDirtyUI();
-        await loadGeoJSON();
-        alert("GeoJSON načítaný nanovo.");
-      } catch (e) {
-        console.error(e);
-        alert("Refresh zlyhal. Pozri Console.");
-      } finally {
-        refreshBtn.disabled = false;
-      }
-    });
-  }
-  try {
-    // vyčisti lokálne zmeny, lebo reload prepisuje stav
-    dirtyIds.clear();
-    movedCount = 0;
-    updateDirtyUI();
-
-    await loadGeoJSON();
-    alert("GeoJSON načítaný nanovo.");
-  } catch (e) {
-    console.error(e);
-    alert("Refresh zlyhal. Pozri Console.");
-  } finally {
-    refreshBtn.disabled = false;
-  }
-});
-
+  // =========================
   // Map
+  // =========================
+  if (!window.L) {
+    alert("Leaflet (L) nie je načítaný. Skontroluj poradie <script> v index.html.");
+    return;
+  }
+
   const map = L.map("map").setView([48.7164, 21.2611], 13);
   L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19 }).addTo(map);
   const markersLayer = L.layerGroup().addTo(map);
 
+  // =========================
   // State
+  // =========================
   let geojsonData = null;
   let selectedFeature = null;
   let selectedMarker = null;
+
   let lastGpsLatLng = null;
   let gpsMarker = null;
 
-  const dirtyIds = new Set(); // feature index based (fallback)
+  const dirtyIds = new Set();
   let movedCount = 0;
 
+  // =========================
+  // Helpers
+  // =========================
   function featureKey(feature, idx) {
-    // ak máš v properties stabilné id, použijeme ho, inak index
     const p = feature?.properties || {};
     return p.site_id || p.id || feature.id || `idx:${idx}`;
   }
@@ -80,22 +60,22 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   function updateDirtyUI() {
-    dirtyBadge.textContent = `Zmeny: ${dirtyIds.size}`;
-    commitBtn.disabled = !(Auth.getToken() && dirtyIds.size > 0);
+    if (dirtyBadge) dirtyBadge.textContent = `Zmeny: ${dirtyIds.size}`;
+    if (commitBtn) commitBtn.disabled = !(Auth.getToken() && dirtyIds.size > 0);
   }
 
   function updateAuthUI(user) {
     const token = Auth.getToken();
     if (token && user) {
-      userBadge.textContent = `@${user.login}`;
-      loginBtn.hidden = true;
-      logoutBtn.hidden = false;
-      commitBtn.disabled = dirtyIds.size === 0;
+      if (userBadge) userBadge.textContent = `@${user.login}`;
+      if (loginBtn) loginBtn.hidden = true;
+      if (logoutBtn) logoutBtn.hidden = false;
+      if (commitBtn) commitBtn.disabled = dirtyIds.size === 0;
     } else {
-      userBadge.textContent = "Neprihlásený";
-      loginBtn.hidden = false;
-      logoutBtn.hidden = true;
-      commitBtn.disabled = true;
+      if (userBadge) userBadge.textContent = "Neprihlásený";
+      if (loginBtn) loginBtn.hidden = false;
+      if (logoutBtn) logoutBtn.hidden = true;
+      if (commitBtn) commitBtn.disabled = true;
     }
   }
 
@@ -105,7 +85,8 @@ document.addEventListener("DOMContentLoaded", async () => {
     try {
       const user = await GH.getViewer(token);
       updateAuthUI(user);
-    } catch {
+    } catch (e) {
+      console.error("refreshUser failed:", e);
       Auth.logout();
       updateAuthUI(null);
     }
@@ -113,11 +94,12 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   function updateCoordsUI(feature) {
     const [lng, lat] = feature.geometry.coordinates;
-    latVal.textContent = Number(lat).toFixed(6);
-    lngVal.textContent = Number(lng).toFixed(6);
+    if (latVal) latVal.textContent = Number(lat).toFixed(6);
+    if (lngVal) lngVal.textContent = Number(lng).toFixed(6);
   }
 
   function clearForm() {
+    if (!form) return;
     form.innerHTML = `<div class="hint">Po výbere markeru sa tu zobrazia properties.</div>`;
   }
 
@@ -127,6 +109,8 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   function buildForm(feature, idx) {
+    if (!form) return;
+
     const properties = feature.properties || {};
     form.innerHTML = "";
 
@@ -175,11 +159,13 @@ document.addEventListener("DOMContentLoaded", async () => {
     selectedFeature = feature;
     selectedMarker = marker;
 
-    selTitle.textContent = (feature.properties?.name || feature.properties?.site_id || feature.id || "Vybraný bod");
-    selSub.textContent = "Uprav properties alebo presuň marker prstom.";
+    if (selTitle) selTitle.textContent =
+      (feature.properties?.name || feature.properties?.site_id || feature.id || "Vybraný bod");
 
-    centerSelBtn.disabled = false;
-    snapToGpsBtn.disabled = (lastGpsLatLng === null);
+    if (selSub) selSub.textContent = "Uprav properties alebo presuň marker prstom.";
+
+    if (centerSelBtn) centerSelBtn.disabled = false;
+    if (snapToGpsBtn) snapToGpsBtn.disabled = (lastGpsLatLng === null);
 
     updateCoordsUI(feature);
     buildForm(feature, idx);
@@ -187,16 +173,20 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   function drawFeatures() {
     markersLayer.clearLayers();
+
     selectedFeature = null;
     selectedMarker = null;
-    centerSelBtn.disabled = true;
-    snapToGpsBtn.disabled = true;
+
+    if (centerSelBtn) centerSelBtn.disabled = true;
+    if (snapToGpsBtn) snapToGpsBtn.disabled = true;
+
     clearForm();
 
     const latlngs = [];
 
     geojsonData.features.forEach((feature, idx) => {
       if (!feature?.geometry || feature.geometry.type !== "Point") return;
+
       const [lng, lat] = feature.geometry.coordinates;
       if (typeof lat !== "number" || typeof lng !== "number") return;
 
@@ -207,7 +197,9 @@ document.addEventListener("DOMContentLoaded", async () => {
       marker.on("dragend", () => {
         const pos = marker.getLatLng();
         feature.geometry.coordinates = [pos.lng, pos.lat];
+
         if (selectedFeature === feature) updateCoordsUI(feature);
+
         movedCount += 1;
         markDirty(feature, idx);
       });
@@ -215,127 +207,174 @@ document.addEventListener("DOMContentLoaded", async () => {
       latlngs.push([lat, lng]);
     });
 
-    if (latlngs.length) map.fitBounds(L.latLngBounds(latlngs).pad(0.1));
+    if (latlngs.length) {
+      map.fitBounds(L.latLngBounds(latlngs).pad(0.1));
+    }
   }
 
   async function loadGeoJSON() {
-  // cache-bust aby sa po merge načítala nová verzia
-  const url = `/${GH.FILE_PATH}?v=${Date.now()}`;
-  const r = await fetch(url, { cache: "no-store" });
-  if (!r.ok) throw new Error(`GeoJSON load failed: ${r.status}`);
+    // cache-bust: po merge PR sa načíta nová verzia aj cez CDN cache
+    const url = `/${GH.FILE_PATH}?v=${Date.now()}`;
+    const r = await fetch(url, { cache: "no-store" });
 
-  geojsonData = await r.json();
-  if (geojsonData.type !== "FeatureCollection") throw new Error("Not a FeatureCollection");
+    if (!r.ok) throw new Error(`GeoJSON load failed: ${r.status}`);
 
-  drawFeatures();
-}
-    if (!r.ok) throw new Error("GeoJSON load failed");
     geojsonData = await r.json();
-    if (geojsonData.type !== "FeatureCollection") throw new Error("Not a FeatureCollection");
+
+    if (geojsonData.type !== "FeatureCollection" || !Array.isArray(geojsonData.features)) {
+      throw new Error("Not a FeatureCollection");
+    }
+
     drawFeatures();
   }
 
+  // =========================
+  // Refresh button
+  // =========================
+  if (refreshBtn) {
+    refreshBtn.addEventListener("click", async () => {
+      refreshBtn.disabled = true;
+      try {
+        dirtyIds.clear();
+        movedCount = 0;
+        updateDirtyUI();
+
+        await loadGeoJSON();
+        alert("GeoJSON načítaný nanovo.");
+      } catch (e) {
+        console.error(e);
+        alert("Refresh zlyhal. Pozri Console.");
+      } finally {
+        refreshBtn.disabled = false;
+      }
+    });
+  }
+
+  // =========================
   // GPS
-  locateBtn.addEventListener("click", () => {
-    map.locate({ setView: true, maxZoom: 18, watch: false, enableHighAccuracy: true });
-  });
+  // =========================
+  if (locateBtn) {
+    locateBtn.addEventListener("click", () => {
+      map.locate({ setView: true, maxZoom: 18, watch: false, enableHighAccuracy: true });
+    });
+  }
 
   map.on("locationfound", (e) => {
     lastGpsLatLng = e.latlng;
+
     if (!gpsMarker) gpsMarker = L.circleMarker(e.latlng, { radius: 8 }).addTo(map);
     else gpsMarker.setLatLng(e.latlng);
-    snapToGpsBtn.disabled = (selectedFeature === null);
+
+    if (snapToGpsBtn) snapToGpsBtn.disabled = (selectedFeature === null);
   });
 
   map.on("locationerror", () => alert("Nepodarilo sa získať polohu."));
 
-  centerSelBtn.addEventListener("click", () => {
-    if (!selectedMarker) return;
-    map.setView(selectedMarker.getLatLng(), Math.max(map.getZoom(), 18));
-  });
+  if (centerSelBtn) {
+    centerSelBtn.addEventListener("click", () => {
+      if (!selectedMarker) return;
+      map.setView(selectedMarker.getLatLng(), Math.max(map.getZoom(), 18));
+    });
+  }
 
-  snapToGpsBtn.addEventListener("click", () => {
-    if (!selectedFeature || !selectedMarker || !lastGpsLatLng) return;
-    selectedMarker.setLatLng(lastGpsLatLng);
-    selectedFeature.geometry.coordinates = [lastGpsLatLng.lng, lastGpsLatLng.lat];
-    updateCoordsUI(selectedFeature);
-  });
+  if (snapToGpsBtn) {
+    snapToGpsBtn.addEventListener("click", () => {
+      if (!selectedFeature || !selectedMarker || !lastGpsLatLng) return;
+      selectedMarker.setLatLng(lastGpsLatLng);
+      selectedFeature.geometry.coordinates = [lastGpsLatLng.lng, lastGpsLatLng.lat];
+      updateCoordsUI(selectedFeature);
+    });
+  }
 
+  // =========================
   // Auth buttons
-  loginBtn.addEventListener("click", () => Auth.startLogin());
-  logoutBtn.addEventListener("click", () => {
-    Auth.logout();
-    refreshUser();
-    updateDirtyUI();
-  });
+  // =========================
+  if (loginBtn) loginBtn.addEventListener("click", () => Auth.startLogin());
 
-  // Commit
-  commitBtn.addEventListener("click", () => {
-    commitSummary.textContent = `Zmenené features: ${dirtyIds.size}, presunuté body: ${movedCount}`;
-    commitMsg.value = `Fix: upravené ${dirtyIds.size} stanovíšť`;
-    commitDialog.showModal();
-  });
-
-  doCommitBtn.addEventListener("click", async (e) => {
-    // dialog submit
-    if (commitDialog.returnValue === "cancel") return;
-  });
-
-  commitDialog.addEventListener("close", async () => {
-    if (commitDialog.returnValue !== "ok") return;
-
-    const token = Auth.getToken();
-    if (!token) return;
-
-    const msg = commitMsg.value.trim();
-    if (!msg) return;
-
-    commitBtn.disabled = true;
-
-    try {
-      // 1) base SHA
-      const baseSha = await GH.getRefSha(token, GH.BASE_BRANCH);
-
-      // 2) branch name
-      const user = await GH.getViewer(token);
-      const ts = new Date().toISOString().replace(/[:.]/g, "-");
-      const branch = `edit/${user.login}/${ts}`;
-
-      // 3) create branch
-      await GH.createBranch(token, branch, baseSha);
-
-      // 4) get file SHA on base
-      const fileSha = await GH.getFileSha(token, GH.FILE_PATH, GH.BASE_BRANCH);
-
-      // 5) put updated file on new branch
-      const newContent = JSON.stringify(geojsonData, null, 2);
-      await GH.putFile(token, GH.FILE_PATH, branch, msg, newContent, fileSha);
-
-      // 6) open PR
-      const pr = await GH.openPR(
-        token,
-        branch,
-        msg,
-        `Editor: @${user.login}\nZmenené features: ${dirtyIds.size}\nPresunuté body: ${movedCount}`
-      );
-
-      // reset dirty
-      dirtyIds.clear();
-      movedCount = 0;
+  if (logoutBtn) {
+    logoutBtn.addEventListener("click", () => {
+      Auth.logout();
+      refreshUser();
       updateDirtyUI();
+    });
+  }
 
-      alert(`Hotovo! PR vytvorený: ${pr.html_url}`);
-    } catch (err) {
-      console.error(err);
-      alert("Commit/PR zlyhalo. Pozri Console log.");
-    } finally {
-      await refreshUser();
-      updateDirtyUI();
-    }
-  });
+  // =========================
+  // Commit workflow (branch + commit + PR)
+  // =========================
+  if (commitBtn) {
+    commitBtn.addEventListener("click", () => {
+      if (!commitDialog) return;
 
-  // init
-  // init
+      if (commitSummary) {
+        commitSummary.textContent = `Zmenené features: ${dirtyIds.size}, presunuté body: ${movedCount}`;
+      }
+      if (commitMsg) {
+        commitMsg.value = `Fix: upravené ${dirtyIds.size} stanovíšť`;
+      }
+
+      commitDialog.showModal();
+    });
+  }
+
+  if (commitDialog) {
+    commitDialog.addEventListener("close", async () => {
+      if (commitDialog.returnValue !== "ok") return;
+
+      const token = Auth.getToken();
+      if (!token) return;
+
+      const msg = (commitMsg?.value || "").trim();
+      if (!msg) return;
+
+      if (commitBtn) commitBtn.disabled = true;
+
+      try {
+        // 1) base SHA (base branch)
+        const baseSha = await GH.getRefSha(token, GH.BASE_BRANCH);
+
+        // 2) branch name
+        const user = await GH.getViewer(token);
+        const ts = new Date().toISOString().replace(/[:.]/g, "-");
+        const branch = `edit/${user.login}/${ts}`;
+
+        // 3) create branch
+        await GH.createBranch(token, branch, baseSha);
+
+        // 4) get file SHA on base
+        const fileSha = await GH.getFileSha(token, GH.FILE_PATH, GH.BASE_BRANCH);
+
+        // 5) put updated file on new branch
+        const newContent = JSON.stringify(geojsonData, null, 2);
+        await GH.putFile(token, GH.FILE_PATH, branch, msg, newContent, fileSha);
+
+        // 6) open PR
+        const pr = await GH.openPR(
+          token,
+          branch,
+          msg,
+          `Editor: @${user.login}\nZmenené features: ${dirtyIds.size}\nPresunuté body: ${movedCount}`
+        );
+
+        // reset dirty
+        dirtyIds.clear();
+        movedCount = 0;
+        updateDirtyUI();
+
+        alert(`Hotovo! PR vytvorený: ${pr.html_url}\nPo merge klikni Refresh.`);
+      } catch (err) {
+        console.error(err);
+        alert("Commit/PR zlyhalo. Pozri Console log.");
+      } finally {
+        await refreshUser();
+        updateDirtyUI();
+      }
+    });
+  }
+
+  // =========================
+  // Init
+  // =========================
   clearForm();
 
   try {
@@ -353,6 +392,6 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   updateDirtyUI();
 
-  // keď je mapa v rozložení, občas pomôže:
+  // flex layout + leaflet: sometimes needs invalidateSize
   setTimeout(() => map.invalidateSize(), 200);
 });
