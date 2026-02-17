@@ -3,21 +3,19 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>GeoJSON Mobile Editor</title>
+  <title>Waste Mobile Editor</title>
 
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <link rel="stylesheet" href="/style.css" />
 </head>
 <body>
   <header class="topbar">
-    <div class="brand">GeoJSON Editor</div>
+    <div class="brand">Waste Editor</div>
 
     <div class="actions">
       <span id="userBadge" class="badge">Neprihlásený</span>
-      <button id="loginBtn" type="button">GitHub login</button>
+      <button id="loginBtn" type="button">GitHub Login</button>
       <button id="logoutBtn" type="button" hidden>Logout</button>
-      <button id="refreshBtn" type="button">Refresh</button>
-      <button id="commitBtn" type="button" disabled>Commit</button>
     </div>
   </header>
 
@@ -25,47 +23,50 @@
     <section id="map"></section>
 
     <section class="panel">
-      <div class="panelHeader">
+      <!-- Sticky header (mobile friendly) -->
+      <div class="panelHeader sticky">
         <div class="panelTitle">
-          <div class="title" id="selTitle">Vyber bod</div>
-          <div class="subtitle" id="selSub">Klikni na marker na mape</div>
+          <div id="selTitle" class="title">Vyber stanovište</div>
+          <div id="selSub" class="subtitle">Klikni na marker alebo vytvor nové stanovište.</div>
+          <div class="coords">
+            <span>lat: <b id="latVal">—</b></span>
+            <span>lng: <b id="lngVal">—</b></span>
+            <span id="dirtyBadge" class="badge">Zmeny: 0</span>
+          </div>
         </div>
+
         <div class="panelBtns">
           <button id="locateBtn" type="button">Moja poloha</button>
           <button id="centerSelBtn" type="button" disabled>Centrovať</button>
+          <button id="snapToGpsBtn" type="button" disabled>Presuň na GPS</button>
+
+          <button id="newSiteBtn" type="button">+ Stanovište</button>
+          <button id="refreshBtn" type="button">Refresh</button>
+
+          <button id="commitBtn" type="button" disabled>Commit</button>
+
+          <!-- Delete is hidden until a feature is selected -->
+          <button id="deleteSiteBtn" type="button" class="danger" hidden disabled>Vymazať</button>
         </div>
       </div>
 
-      <div class="coords">
-        <div><b>Lat:</b> <span id="latVal">—</span></div>
-        <div><b>Lng:</b> <span id="lngVal">—</span></div>
-        <button id="snapToGpsBtn" type="button" disabled>Presuň na GPS</button>
-        <span class="badge" id="dirtyBadge">Zmeny: 0</span>
-      </div>
-
-      <form id="editForm" class="form" autocomplete="off">
-        <div class="hint">Po výbere markeru sa tu zobrazia properties.</div>
-      </form>
+      <div id="editForm" class="form"></div>
     </section>
   </main>
 
   <!-- Commit modal -->
   <dialog id="commitDialog" class="dialog">
     <form method="dialog" class="dialogForm">
-      <h3>Commit zmeny</h3>
-      <p id="commitSummary"></p>
+      <h3>Commit & PR</h3>
+      <p id="commitSummary" class="small"></p>
 
-      <label>Commit message</label>
-      <input id="commitMsg" required placeholder="napr. Fix: upravené 10 stanovíšť" />
+      <label for="commitMsg">Commit message</label>
+      <input id="commitMsg" type="text" />
 
       <div class="dialogActions">
         <button value="cancel">Zrušiť</button>
-        <button id="doCommitBtn" value="ok">Vytvoriť PR</button>
+        <button value="ok">OK</button>
       </div>
-
-      <p class="small">
-        Vytvorí sa branch + commit + Pull Request do <code>main</code>.
-      </p>
     </form>
   </dialog>
 

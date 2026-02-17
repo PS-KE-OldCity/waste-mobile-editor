@@ -254,3 +254,37 @@ button:disabled {
   button, .fileBtn { font-size: 13px; }
   .panelTitle .title { font-size: 15px; }
 }
+
+/* Sticky panel header for mobile usability */
+.panelHeader.sticky {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  background: var(--bg);
+  padding-top: 8px;
+  padding-bottom: 8px;
+}
+
+/* Button layout */
+.panelBtns {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+/* Danger button */
+button.danger {
+  background: #7a1f1f;
+}
+
+/* Make coords compact */
+.coords {
+  margin-top: 6px;
+}
+
+/* Slightly tighten panel on small screens */
+@media (max-width: 420px) {
+  .panel { padding: 8px; }
+  .panelBtns button { padding: 8px 9px; }
+}
