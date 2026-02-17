@@ -2,7 +2,7 @@
 <html lang="sk">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>Waste Mobile Editor</title>
 
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
@@ -12,31 +12,35 @@
   <header class="topbar">
     <div class="brand">Waste Editor</div>
 
-    <div class="actions">
+    <div class="topActions">
       <span id="userBadge" class="badge">Neprihlásený</span>
-      <button id="loginBtn" type="button">GitHub Login</button>
+      <button id="loginBtn" type="button">Login</button>
       <button id="logoutBtn" type="button" hidden>Logout</button>
     </div>
   </header>
 
   <main class="layout">
-    <section id="map"></section>
+    <section id="mapWrap">
+      <div id="map"></div>
+      <div class="mapOverlay">
+        <button id="locateBtn" type="button" class="pill">Moja poloha</button>
+        <button id="mapToggleBtn" type="button" class="pill">Viac mapy</button>
+      </div>
+    </section>
 
-    <section class="panel">
-      <!-- Sticky header (mobile friendly) -->
-      <div class="panelHeader sticky">
-        <div class="panelTitle">
-          <div id="selTitle" class="title">Vyber stanovište</div>
-          <div id="selSub" class="subtitle">Klikni na marker alebo vytvor nové stanovište.</div>
-          <div class="coords">
-            <span>lat: <b id="latVal">—</b></span>
-            <span>lng: <b id="lngVal">—</b></span>
+    <section id="panel" class="panel">
+      <div class="panelHeader">
+        <div class="selInfo">
+          <div id="selTitle" class="selTitle">Vyber stanovište</div>
+          <div id="selSub" class="selSub">Klikni na marker alebo vytvor nové.</div>
+          <div class="coordsRow">
+            <span>lat <b id="latVal">—</b></span>
+            <span>lng <b id="lngVal">—</b></span>
             <span id="dirtyBadge" class="badge">Zmeny: 0</span>
           </div>
         </div>
 
-        <div class="panelBtns">
-          <button id="locateBtn" type="button">Moja poloha</button>
+        <div class="headerBtns">
           <button id="centerSelBtn" type="button" disabled>Centrovať</button>
           <button id="snapToGpsBtn" type="button" disabled>Presuň na GPS</button>
 
@@ -44,8 +48,6 @@
           <button id="refreshBtn" type="button">Refresh</button>
 
           <button id="commitBtn" type="button" disabled>Commit</button>
-
-          <!-- Delete is hidden until a feature is selected -->
           <button id="deleteSiteBtn" type="button" class="danger" hidden disabled>Vymazať</button>
         </div>
       </div>
@@ -53,6 +55,32 @@
       <div id="editForm" class="form"></div>
     </section>
   </main>
+
+  <!-- Add Container dialog -->
+  <dialog id="addContainerDialog" class="dialog">
+    <form method="dialog" class="dialogForm">
+      <h3>Pridať nádobu</h3>
+      <p class="small">Klikni na typ. Objem sa predvyplní, môžeš zmeniť.</p>
+
+      <div id="containerTypeGrid" class="typeGrid"></div>
+
+      <div class="rowInline">
+        <div class="row grow">
+          <label>Objem (l)</label>
+          <input id="containerVolume" type="number" min="0" step="1" />
+        </div>
+        <div class="row">
+          <label>Počet</label>
+          <input id="containerCount" type="number" min="1" step="1" value="1" />
+        </div>
+      </div>
+
+      <div class="dialogActions">
+        <button value="cancel">Zrušiť</button>
+        <button id="addContainerOkBtn" value="ok">Pridať</button>
+      </div>
+    </form>
+  </dialog>
 
   <!-- Commit modal -->
   <dialog id="commitDialog" class="dialog">
