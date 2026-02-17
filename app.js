@@ -39,24 +39,24 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   // ===== State =====
   let geojsonData = null;
-  let originalSnapshot = null; // deep copy baseline for diff
+  let originalSnapshot = null; // baseline for diff
   let selectedFeature = null;
   let selectedMarker = null;
   let selectedIdx = null;
 
-  const dirtyKeys = new Set();
+  const dirtyKeys = new Set(); // feature keys + "__file__"
   let movedCount = 0;
 
   const markerByKey = new Map();
 
   // ===== Container types =====
   const CONTAINERS = [
-    { key: "glass", label: "Sklo", liters: 1100, color: "#7fd3ff", icon: "◯" },
-    { key: "mixed", label: "Zmes", liters: 1100, color: "#c9c9c9", icon: "■" },
-    { key: "plastic", label: "Plast", liters: 1100, color: "#ffd36a", icon: "△" },
-    { key: "paper", label: "Papier", liters: 1100, color: "#79a7ff", icon: "▤" },
-    { key: "bio", label: "Bio", liters: 240, color: "#9be59b", icon: "✿" },
-    { key: "oil", label: "Olej", liters: 240, color: "#ff9a6a", icon: "滴" },
+    { key: "glass",   label: "Sklo",   liters: 1100, color: "#7fd3ff", icon: "🫙" },
+    { key: "mixed",   label: "Zmes",   liters: 1100, color: "#c9c9c9", icon: "🗑" },
+    { key: "plastic", label: "Plast",  liters: 1100, color: "#ffd36a", icon: "♻️" },
+    { key: "paper",   label: "Papier", liters: 1100, color: "#79a7ff", icon: "📄" },
+    { key: "bio",     label: "Bio",    liters: 240,  color: "#9be59b", icon: "🍛" },
+    { key: "oil",     label: "Olej",   liters: 240,  color: "#ff9a6a", icon: "🛢" },
   ];
 
   // ===== Helpers =====
@@ -112,7 +112,8 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   function setEditing(on) {
     document.body.classList.toggle("editing", !!on);
-    // disable map buttons when editing (as requested)
+
+    // disable map buttons while editing (as requested)
     if (locateBtn) locateBtn.disabled = !!on;
     if (newSiteBtn) newSiteBtn.disabled = !!on;
 
@@ -167,8 +168,15 @@ document.addEventListener("DOMContentLoaded", async () => {
     for (const k of markerByKey.keys()) updateMarkerStyle(k);
   }
 
-  function makeDivIcon(isDirty) {
-    const color = isDirty ? "#d32f2f" : "#1e88e5";
+  // Marker color rules:
+  // dirty => red
+  // verified => green
+  // else => blue
+  function makeDivIcon({ isDirty, isVerified }) {
+    let color = "#1e88e5";
+    if (isVerified) color = "#16a34a";
+    if (isDirty) color = "#d32f2f";
+
     const html = `
       <div style="
         width:18px;height:18px;border-radius:999px;
@@ -182,8 +190,12 @@ document.addEventListener("DOMContentLoaded", async () => {
   function updateMarkerStyle(key) {
     const entry = markerByKey.get(key);
     if (!entry) return;
+
     const isDirty = dirtyKeys.has(key) || dirtyKeys.has("__file__");
-    entry.marker.setIcon(makeDivIcon(isDirty));
+    const p = entry.feature?.properties || {};
+    const isVerified = (p.verified === true);
+
+    entry.marker.setIcon(makeDivIcon({ isDirty, isVerified }));
   }
 
   function clearSelectionUI() {
@@ -200,16 +212,12 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     if (form) {
       form.innerHTML = `<div class="hint">
-        Terénny flow:<br/>
-        1) Klikni na stanovište (marker)<br/>
-        2) Skontroluj polohu (GPS / ťahaj marker)<br/>
-        3) Názov → typ → zámok → nádoby (+/−)<br/>
-        4) Skontrolované
+        Klikni na marker v mape.
       </div>`;
     }
   }
 
-  // ===== Segmented UI helpers =====
+  // ===== Segmented UI helpers (instant highlight) =====
   function mkSection(title) {
     const s = document.createElement("div");
     s.className = "section";
@@ -271,24 +279,33 @@ document.addEventListener("DOMContentLoaded", async () => {
     return wrap;
   }
 
-  function mkSeg(options, currentValue, onChange, mode = "neutral") {
-    // mode: neutral | yesno (for coloring optional)
+  // IMPORTANT FIX: click immediately toggles .on in UI
+  function mkSeg(options, currentValue, onChange) {
     const wrap = document.createElement("div");
     wrap.className = "seg";
+
+    const buttons = [];
 
     for (const opt of options) {
       const b = document.createElement("button");
       b.type = "button";
       b.className = "segBtn";
-      const isOn = (currentValue === opt.value);
-      if (isOn) {
-        b.classList.add("on");
-        if (mode === "yesno" && opt.value === false) b.classList.add("offOn");
-      }
       b.textContent = opt.label;
-      b.addEventListener("click", () => onChange(opt.value));
+
+      if (currentValue === opt.value) b.classList.add("on");
+
+      b.addEventListener("click", () => {
+        onChange(opt.value);
+
+        // instantly update highlight
+        for (const bb of buttons) bb.classList.remove("on");
+        b.classList.add("on");
+      });
+
+      buttons.push(b);
       wrap.appendChild(b);
     }
+
     return wrap;
   }
 
@@ -318,8 +335,10 @@ document.addEventListener("DOMContentLoaded", async () => {
       }
     }
 
-    const cont0 = (p0.containers || []).map(x => ({ f: x.fraction ?? x.waste ?? x.type, c: x.count ?? 1, v: x.volume_l ?? x.volume ?? x.liters })).sort((a,b)=>String(a.f).localeCompare(String(b.f)));
-    const cont1 = (p1.containers || []).map(x => ({ f: x.fraction ?? x.waste ?? x.type, c: x.count ?? 1, v: x.volume_l ?? x.volume ?? x.liters })).sort((a,b)=>String(a.f).localeCompare(String(b.f)));
+    const cont0 = (p0.containers || []).map(x => ({ f: x.fraction ?? x.waste ?? x.type, c: x.count ?? 1, v: x.volume_l ?? x.volume ?? x.liters }))
+      .sort((a,b)=>String(a.f).localeCompare(String(b.f)));
+    const cont1 = (p1.containers || []).map(x => ({ f: x.fraction ?? x.waste ?? x.type, c: x.count ?? 1, v: x.volume_l ?? x.volume ?? x.liters }))
+      .sort((a,b)=>String(a.f).localeCompare(String(b.f)));
     if (JSON.stringify(cont0) !== JSON.stringify(cont1)) changes.push(`containers: ${JSON.stringify(cont0)} → ${JSON.stringify(cont1)}`);
 
     return changes;
@@ -375,36 +394,39 @@ document.addEventListener("DOMContentLoaded", async () => {
       });
       sQuick.appendChild(mkRow("Názov", name));
 
-      const note = mkTextarea(p.note ?? "", (v) => { p.note = v; setDirty(featureKey(feature, idx)); }, 3);
+      const note = mkTextarea(p.note ?? "", (v) => {
+        p.note = v;
+        setDirty(featureKey(feature, idx));
+      }, 3);
       sQuick.appendChild(mkRow("Poznámka", note));
     }
     form.appendChild(sQuick);
 
-    // SITE: type buttons + lock yes/no buttons
+    // SITE: type + lock
     const sSite = mkSection("Stanovište");
     {
-      // type: klietka, otvorene, podzemne, polopodzemne
+      // type buttons
       const typeWrap = mkSeg(
         [
-          { value: "cage", label: "Klietka" },
-          { value: "open", label: "Otvorené" },
-          { value: "underground", label: "Podzemné" },
-          { value: "semi_underground", label: "Polopodzemné" },
+          { value: "cage",            label: "Klietka" },
+          { value: "open",            label: "Otvorené" },
+          { value: "underground",     label: "Podzemné" },
+          { value: "semi_underground",label: "Polopodzemné" },
         ],
-        p.site_kind ?? "",
+        p.site_kind ?? null,
         (v) => { p.site_kind = v; setDirty(featureKey(feature, idx)); }
       );
       sSite.appendChild(mkRow("Typ", typeWrap));
 
-      // lock yes/no as two buttons
+      // lock yes/no
+      const lockCurrent = (p.has_lock === true) ? true : (p.has_lock === false) ? false : null;
       const lockWrap = mkSeg(
         [
-          { value: true, label: "Má zámok" },
+          { value: true,  label: "Má zámok" },
           { value: false, label: "Nemá zámok" },
         ],
-        (p.has_lock === true) ? true : (p.has_lock === false) ? false : null,
-        (v) => { p.has_lock = v; setDirty(featureKey(feature, idx)); },
-        "yesno"
+        lockCurrent,
+        (v) => { p.has_lock = v; setDirty(featureKey(feature, idx)); }
       );
       sSite.appendChild(mkRow("Zámok", lockWrap));
     }
@@ -425,8 +447,8 @@ document.addEventListener("DOMContentLoaded", async () => {
 
         const icon = document.createElement("div");
         icon.className = "cIcon";
-        icon.style.background = t.color + "33";
-        icon.style.border = `1px solid ${t.color}`;
+        icon.style.borderColor = t.color;
+        icon.style.boxShadow = "0 6px 14px rgba(0,0,0,0.18)";
         icon.innerHTML = `<span style="font-weight:900">${t.icon}</span>`;
 
         const info = document.createElement("div");
@@ -482,12 +504,12 @@ document.addEventListener("DOMContentLoaded", async () => {
 
       const hint = document.createElement("div");
       hint.className = "small";
-      hint.textContent = "Ak máš rôzne objemy, doplň to v Pokročilé (JSON).";
+      //hint.textContent = "Ak máš rôzne objemy, doplň to v Pokročilé (JSON).";
       sCont.appendChild(hint);
     }
     form.appendChild(sCont);
 
-    // CHECK: verified button + accessible yes/no buttons + sliders + issues
+    // CHECK: verified + accessible + sliders + issues
     const sCheck = mkSection("Kontrola");
     {
       const verified = (p.verified === true);
@@ -498,6 +520,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       verifiedBtn.addEventListener("click", async () => {
         const next = !(p.verified === true);
         p.verified = next;
+
         if (next) {
           p.verified_at = new Date().toISOString();
           try {
@@ -508,28 +531,35 @@ document.addEventListener("DOMContentLoaded", async () => {
             }
           } catch {}
         }
+
         setDirty(featureKey(feature, idx));
+        updateMarkerStyle(featureKey(feature, idx)); // update green/red immediately
         buildForm(feature, idx);
       });
       sCheck.appendChild(verifiedBtn);
 
-      // accessible as two buttons
+      // accessible yes/no
+      const accCurrent = (p.accessible === true) ? true : (p.accessible === false) ? false : null;
       const accWrap = mkSeg(
         [
-          { value: true, label: "Bezbariérové: Áno" },
+          { value: true,  label: "Bezbariérové: Áno" },
           { value: false, label: "Bezbariérové: Nie" },
         ],
-        (p.accessible === true) ? true : (p.accessible === false) ? false : null,
-        (v) => { p.accessible = v; setDirty(featureKey(feature, idx)); },
-        "yesno"
+        accCurrent,
+        (v) => { p.accessible = v; setDirty(featureKey(feature, idx)); }
       );
       sCheck.appendChild(mkRow("Bezbariérové", accWrap));
 
       const clean = (Number.isFinite(p.cleanliness) ? p.cleanliness : 3);
       const wear = (Number.isFinite(p.wear) ? p.wear : 3);
 
-      sCheck.appendChild(mkRow("Index čistoty (0–5)", mkRange(clean, 0, 5, 1, (v) => { p.cleanliness = v; setDirty(featureKey(feature, idx)); })));
-      sCheck.appendChild(mkRow("Index opotrebenia (0–5)", mkRange(wear, 0, 5, 1, (v) => { p.wear = v; setDirty(featureKey(feature, idx)); })));
+      sCheck.appendChild(mkRow("Index čistoty (0–5)",
+        mkRange(clean, 0, 5, 1, (v) => { p.cleanliness = v; setDirty(featureKey(feature, idx)); })
+      ));
+
+      sCheck.appendChild(mkRow("Index opotrebenia (0–5)",
+        mkRange(wear, 0, 5, 1, (v) => { p.wear = v; setDirty(featureKey(feature, idx)); })
+      ));
 
       const issues = mkTextarea(p.issues ?? "", (v) => { p.issues = v; setDirty(featureKey(feature, idx)); }, 3);
       sCheck.appendChild(mkRow("Závady", issues));
@@ -584,6 +614,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         setDirty(featureKey(feature, idx));
         err.style.display = "none";
         buildForm(feature, idx);
+        updateMarkerStyle(featureKey(feature, idx));
       } catch {
         err.textContent = "Neplatný JSON – zmeny sa neuložili.";
         err.style.display = "block";
@@ -607,7 +638,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     const p = feature.properties || {};
     if (selTitle) selTitle.textContent = p.name || p.site_id || "Vybraný bod";
-    if (selSub) selSub.textContent = "Terénny režim: názov → typ/zámok → nádoby → kontrola.";
+    //if (selSub) selSub.textContent = "Terénny režim: názov → typ/zámok → nádoby → kontrola.";
 
     updateCoordsUI(feature);
     setEditing(true);
@@ -618,7 +649,16 @@ document.addEventListener("DOMContentLoaded", async () => {
     markersLayer.clearLayers();
     markerByKey.clear();
 
-    clearSelectionUI();
+    // reset selection UI but keep dirtyKeys
+    selectedFeature = null;
+    selectedMarker = null;
+    selectedIdx = null;
+    if (selTitle) selTitle.textContent = "Vyber stanovište";
+    if (selSub) selSub.textContent = "Klikni na marker v mape.";
+    if (latVal) latVal.textContent = "—";
+    if (lngVal) lngVal.textContent = "—";
+    setEditing(false);
+    if (form) form.innerHTML = `<div class="hint">Klikni na marker v mape.</div>`;
 
     const latlngs = [];
 
@@ -631,8 +671,12 @@ document.addEventListener("DOMContentLoaded", async () => {
 
       const key = featureKey(feature, idx);
       const isDirty = dirtyKeys.has(key) || dirtyKeys.has("__file__");
+      const isVerified = (feature?.properties?.verified === true);
 
-      const marker = L.marker([lat, lng], { draggable: true, icon: makeDivIcon(isDirty) }).addTo(markersLayer);
+      const marker = L.marker([lat, lng], {
+        draggable: true,
+        icon: makeDivIcon({ isDirty, isVerified })
+      }).addTo(markersLayer);
 
       marker.on("click", () => selectFeature(feature, marker, idx));
 
@@ -689,7 +733,7 @@ document.addEventListener("DOMContentLoaded", async () => {
           site_id: `site_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`,
           name: "",
           note: "",
-          site_kind: "",
+          site_kind: null,
           has_lock: null,
           containers: [],
           verified: false,
@@ -701,6 +745,8 @@ document.addEventListener("DOMContentLoaded", async () => {
       };
 
       geojsonData.features.push(f);
+
+      // structural change
       dirtyKeys.add("__file__");
       const key = featureKey(f, geojsonData.features.length - 1);
       dirtyKeys.add(key);

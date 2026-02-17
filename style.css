@@ -1,98 +1,145 @@
-:root{
-  --bg:#f3f5f7;
-  --panel:#ffffff;
-  --border:#d7dde3;
-  --topbar:#13202c;
+/* =========================================
+   Waste Mobile Editor – PS PRO theme
+   ========================================= */
 
-  --btn:#2e4256;
-  --btnText:#fff;
-  --danger:#7a1f1f;
+:root{
+  --ps-primary: #00BCFF;
+  --ps-primary-2: #89D4EF;
+  --ps-navy: #000080;
+
+  --bg: #ffffff;
+  --panel: rgba(255,255,255,0.92);
+  --text: #0b1220;
+  --muted: rgba(11,18,32,0.65);
+  --border: rgba(11,18,32,0.12);
+
+  --shadow: 0 12px 26px rgba(0,0,0,0.16);
+  --shadow-soft: 0 8px 18px rgba(0,0,0,0.12);
+
+  --radius-lg: 16px;
+  --radius-md: 12px;
 
   --mapTall: 58vh;
-  --mapStrip: 22px; /* editing mode */
+  --mapStrip: 22px;
 }
 
-*{ box-sizing:border-box; }
+*, *::before, *::after{ box-sizing:border-box; }
+html, body{ height:100%; margin:0; }
 
-html,body{
-  height:100%;
-  margin:0;
-  font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+body{
+  font:14px/1.35 system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+  color:var(--text);
   background:var(--bg);
 }
 
-/* ===== Topbar ===== */
+/* =========================================
+   TOP BAR
+   ========================================= */
 .topbar{
   height:52px;
-  background:var(--topbar);
-  color:#fff;
+  position: sticky;
+  top: 0;
+  z-index: 2000;
+
+  background: linear-gradient(135deg,var(--ps-primary),var(--ps-primary-2));
+  color:#00243a;
+  box-shadow: 0 4px 14px rgba(0,0,0,0.12);
+
   display:flex;
   align-items:center;
   justify-content:space-between;
-  padding:0 10px;
-  gap:10px;
+  padding: 10px 12px;
+  gap: 10px;
 }
 
-.brand{ font-weight:900; letter-spacing:0.2px; }
+.brand{
+  font-weight:900;
+  font-size:16px;
+  white-space:nowrap;
+}
 
 .topActions{
   display:flex;
   align-items:center;
   gap:8px;
   flex-wrap:wrap;
+  min-width:0;
 }
 
+/* Buttons */
 button{
-  border:0;
-  border-radius:12px;
-  padding:10px 12px;
-  background:var(--btn);
-  color:var(--btnText);
-  font-weight:800;
+  border:1px solid var(--border);
+  background: rgba(11,18,32,0.04);
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
   cursor:pointer;
+  color: var(--text);
+  font-weight: 800;
+  box-shadow:0 6px 14px rgba(0,0,0,0.06);
+  transition: transform .06s ease, background .15s ease, filter .15s ease, box-shadow .15s ease;
 }
+button:hover{ background:rgba(0,188,255,0.10); }
+button:active{ transform: translateY(1px); }
+button:disabled{ opacity:.45; cursor:not-allowed; box-shadow:none; }
 
-button:disabled{ opacity:.45; cursor:not-allowed; }
-button.primary{ background:#1e88e5; }
-button.ghost{ background: rgba(255,255,255,0.12); }
-button.danger{ background: var(--danger); }
+button.primary{
+  background:linear-gradient(135deg,var(--ps-primary),var(--ps-primary-2));
+  border-color: rgba(0,188,255,0.55);
+  color:#00243a;
+  font-weight:900;
+}
+button.ghost{
+  background: rgba(255,255,255,0.90);
+  border: 1px solid rgba(0,0,0,0.12);
+  color:#00243a;
+  box-shadow:0 4px 10px rgba(0,0,0,0.10);
+}
+button.ghost:hover{
+  transform: translateY(-1px);
+  box-shadow:0 6px 14px rgba(0,0,0,0.16);
+}
 
 .badge{
-  background: rgba(255,255,255,0.12);
-  color:#fff;
-  padding:6px 10px;
+  border:1px solid rgba(0,0,0,0.12);
   border-radius:999px;
-  font-size:12px;
+  padding: 6px 10px;
+  font-size: 12px;
+  background: rgba(255,255,255,0.70);
+  color:#00243a;
   white-space:nowrap;
 }
 
 .badgeBtn{
-  border:0;
-  background: rgba(46,66,86,0.95);
-  color:#fff;
+  border:1px solid rgba(0,0,0,0.12);
+  background: rgba(255,255,255,0.70);
+  color:#00243a;
   border-radius:999px;
-  padding:6px 10px;
-  font-weight:900;
+  padding: 6px 10px;
+  font-weight: 900;
 }
 
-/* ===== Layout ===== */
+/* =========================================
+   LAYOUT (critical: map must have height)
+   ========================================= */
 .layout{
   height: calc(100% - 52px);
   display:flex;
   flex-direction:column;
 }
 
-/* ===== Map ===== */
+/* =========================================
+   MAP (critical: #mapWrap & #map have height)
+   ========================================= */
 #mapWrap{
   position:relative;
   height: var(--mapTall);
-  background:#e6eaee;
   border-bottom: 1px solid var(--border);
+  background:#e6eaee;
 }
 
 body.editing #mapWrap{
   height: var(--mapStrip);
-  overflow: hidden; /* FIX: aby X neprekrývalo panel */
+  overflow:hidden;
 }
 
 #map{
@@ -100,22 +147,20 @@ body.editing #mapWrap{
   width:100%;
 }
 
+/* PS tint on tiles */
+#map .leaflet-tile-pane{
+  filter: saturate(1.06) contrast(1.02) hue-rotate(-8deg);
+}
+
+/* Map controls */
 .mapControls{
   position:absolute;
   display:flex;
   gap:8px;
-  z-index: 500;
+  z-index:500;
 }
-
 .mapControls.topRight{ top:8px; right:8px; }
-.mapControls.topLeft{ top:8px; left:8px; }
 .mapControls.bottomRight{ bottom:8px; right:8px; }
-
-/* Disabled map controls while editing */
-.mapBtn[disabled]{
-  opacity: 0.35;
-  pointer-events: none;
-}
 
 .mapBtn{
   width:42px;
@@ -126,48 +171,49 @@ body.editing #mapWrap{
   align-items:center;
   justify-content:center;
   font-size:18px;
-  background: rgba(19,32,44,0.92);
-  color:#fff;
-  border: 1px solid rgba(255,255,255,0.15);
-}
 
+  background: linear-gradient(135deg,var(--ps-primary),var(--ps-primary-2));
+  color:#00243a;
+  border: 1px solid rgba(0,188,255,0.55);
+  box-shadow: 0 10px 22px rgba(0,0,0,0.16);
+}
 .mapBtn.big{
   width:54px;
   height:54px;
   font-size:24px;
 }
+.mapBtn[disabled]{ opacity:.35; pointer-events:none; box-shadow:none; }
 
-.editingOnly{ display:none; }
-body.editing .editingOnly{ display:flex; }
-
-/* FIX: X v edit mode bude menšie a sedí do stripu */
-body.editing .mapControls.topLeft{ top:2px; left:8px; }
-body.editing #clearSelBtn{
-  width:28px;
-  height:28px;
-  border-radius:10px;
-  font-size:14px;
-}
-
-/* ===== Panel ===== */
+/* =========================================
+   PANEL
+   ========================================= */
 .panel{
   flex:1;
   overflow:auto;
   -webkit-overflow-scrolling: touch;
-  background:var(--bg);
+  background: transparent;
 }
 
 .panelHeader{
   position: sticky;
   top: 0;
   z-index: 10;
-  background: var(--bg);
+  background: rgba(255,255,255,0.65);
+  backdrop-filter: blur(10px);
   padding: 10px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid rgba(11,18,32,0.10);
+}
+
+/* X inside header */
+.panelHeaderRow{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:10px;
 }
 
 .selTitle{ font-size:16px; font-weight:900; }
-.selSub{ font-size:12px; opacity:0.75; margin-top:2px; }
+.selSub{ font-size:12px; color: var(--muted); margin-top:2px; }
 
 .coordsRow{
   margin-top:8px;
@@ -176,16 +222,44 @@ body.editing #clearSelBtn{
   flex-wrap:wrap;
   align-items:center;
   font-size:13px;
+  color: rgba(11,18,32,0.85);
 }
 
-.form{ padding:10px; }
+.form{ padding: 10px; }
 
+/* Close button inside box */
+.closeBtn{
+  width:40px;
+  height:40px;
+  padding:0;
+  border-radius:14px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  font-size:18px;
+  font-weight:900;
+
+  background: linear-gradient(135deg,var(--ps-primary),var(--ps-primary-2));
+  border-color: rgba(0,188,255,0.55);
+  color:#00243a;
+  box-shadow: 0 10px 22px rgba(0,0,0,0.12);
+}
+
+/* shown only in edit mode */
+.editingOnly{ display:none; }
+body.editing .editingOnly{ display:flex; }
+
+/* =========================================
+   SECTIONS / CARDS
+   ========================================= */
 .section{
-  background:#fff;
-  border:1px solid #cfd7df;
-  border-radius:16px;
-  padding:12px;
-  margin:10px 0;
+  background: var(--panel);
+  backdrop-filter: blur(10px);
+  border:1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 12px;
+  margin: 10px 0;
+  box-shadow: var(--shadow-soft);
 }
 
 .sectionTitle{
@@ -195,9 +269,10 @@ body.editing #clearSelBtn{
   gap:10px;
   font-weight:900;
   margin-bottom:10px;
+  color: var(--ps-navy);
 }
 
-.small{ font-size:12px; opacity:0.75; }
+.small{ color: var(--muted); font-size:12px; }
 
 .row{
   display:flex;
@@ -205,90 +280,110 @@ body.editing #clearSelBtn{
   gap:4px;
   margin-bottom:10px;
 }
-
-label{ font-size:12px; opacity:0.75; }
+label{ font-size:12px; color: var(--muted); font-weight:800; }
 
 input, select, textarea{
   width:100%;
   padding:10px 12px;
   font-size:16px;
-  border-radius:12px;
-  border:1px solid #cfd7df;
-  background:#fff;
-  outline:none;
+  border-radius: var(--radius-md);
+  border:1px solid var(--border);
+  background: rgba(255,255,255,0.95);
+  color: var(--text);
+  outline: none;
 }
-
+input:focus, select:focus, textarea:focus{
+  border-color: rgba(0,188,255,0.55);
+  box-shadow: 0 0 0 4px rgba(0,188,255,0.18);
+}
 textarea{ resize: vertical; }
 
 .hint{
   padding:12px;
-  border-radius:16px;
-  background:#fff;
-  border:1px dashed #cfd7df;
+  border-radius:var(--radius-lg);
+  background: rgba(255,255,255,0.90);
+  border: 1px dashed rgba(11,18,32,0.18);
+  color: rgba(11,18,32,0.80);
 }
 
-/* ===== Segmented buttons (terénne voľby) ===== */
-.seg{
-  display:flex;
-  gap:8px;
-}
+/* =========================================
+   SEGMENTED BUTTONS
+   ========================================= */
+.seg{ display:flex; gap:8px; }
 .segBtn{
   flex:1;
   padding:12px 10px;
-  border-radius:14px;
-  background:#e9eef3;
-  color:#13202c;
-  border:1px solid #d7dde3;
+  border-radius:999px;
+  background: rgba(11,18,32,0.04);
+  border:1px solid var(--border);
+  color: var(--text);
   font-weight:900;
+  box-shadow:0 6px 14px rgba(0,0,0,0.06);
 }
+.segBtn:hover{ background: rgba(0,188,255,0.10); }
 .segBtn.on{
-  background:#d6f5dd;
-  border-color:#9bd7aa;
-}
-.segBtn.offOn{
-  background:#ffe2e2;
-  border-color:#f0b0b0;
+  background: linear-gradient(135deg,var(--ps-primary),var(--ps-primary-2));
+  border-color: rgba(0,188,255,0.55);
+  color:#00243a;
 }
 
-/* ===== Container cards ===== */
+/* Verified toggle */
+.toggleBtn{
+  width:100%;
+  padding:12px 12px;
+  border-radius:999px;
+  background: rgba(11,18,32,0.04);
+  border:1px solid var(--border);
+  font-weight:900;
+}
+.toggleBtn.on{
+  background: linear-gradient(135deg,var(--ps-primary),var(--ps-primary-2));
+  border-color: rgba(0,188,255,0.55);
+  color:#00243a;
+}
+
+/* =========================================
+   CONTAINERS
+   ========================================= */
 .containerGrid{
   display:grid;
   grid-template-columns: repeat(2, 1fr);
   gap:10px;
 }
-@media (min-width: 520px){
+@media (min-width:520px){
   .containerGrid{ grid-template-columns: repeat(3, 1fr); }
 }
 
 .cCard{
-  border:1px solid #d7dde3;
-  border-radius:16px;
+  border:1px solid var(--border);
+  border-radius: var(--radius-lg);
   padding:10px;
-  background:#fff;
+  background: rgba(255,255,255,0.90);
+  box-shadow: 0 6px 14px rgba(0,0,0,0.06);
   display:flex;
   flex-direction:column;
   gap:8px;
 }
 
-.cHead{
-  display:flex;
-  gap:10px;
-  align-items:center;
-}
+.cHead{ display:flex; gap:10px; align-items:center; }
 
 .cIcon{
-  width:34px;
-  height:34px;
-  border-radius:12px;
+  width:34px; height:34px;
+  border-radius:999px;
   display:flex;
   align-items:center;
   justify-content:center;
-  color:#13202c;
-  background:#eef3f7;
+  font-weight:900;
+  font-size:18px;
+  line-height:1;
+  color:#00243a;
+  background:#fff;
+  border:2px solid rgba(0,0,0,0.15);
+  box-shadow: 0 6px 14px rgba(0,0,0,0.18);
 }
 
 .cTitle{ font-weight:900; }
-.cMeta{ font-size:12px; opacity:0.75; }
+.cMeta{ font-size:12px; color: var(--muted); }
 
 .cCount{
   display:flex;
@@ -296,84 +391,182 @@ textarea{ resize: vertical; }
   align-items:center;
   justify-content:space-between;
 }
-
 .cCount span{
-  font-weight:900;
+  font-weight:950;
   font-size:16px;
+  color: var(--ps-navy);
 }
 
 .pmBtn{
-  width:44px;
-  height:44px;
+  width:44px; height:44px;
   border-radius:14px;
   padding:0;
   display:flex;
   align-items:center;
   justify-content:center;
   font-size:18px;
-  font-weight:900;
-  background: var(--btn);
+  font-weight:950;
+  background: rgba(11,18,32,0.04);
+  border: 1px solid var(--border);
+  color: var(--text);
+  box-shadow:0 6px 14px rgba(0,0,0,0.06);
 }
-.pmBtn.minus{ background: var(--danger); }
+.pmBtn:hover{ background: rgba(0,188,255,0.10); }
 
-/* ===== Toggle + sliders ===== */
-.toggleBtn{
-  width:100%;
-  padding:12px 12px;
-  border-radius:14px;
-  background:#e9eef3;
-  color:#13202c;
-  border:1px solid #d7dde3;
-  font-weight:900;
+.pmBtn.minus{
+  background: rgba(220,38,38,0.10);
+  border-color: rgba(220,38,38,0.25);
 }
-.toggleBtn.on{
-  background:#d6f5dd;
-  border-color:#9bd7aa;
-}
+.pmBtn.minus:hover{ background: rgba(220,38,38,0.14); }
 
-.rangeWrap{
-  display:flex;
-  gap:10px;
-  align-items:center;
-}
+/* =========================================
+   RANGE
+   ========================================= */
+.rangeWrap{ display:flex; gap:10px; align-items:center; }
 .rangeWrap input[type="range"]{ width:100%; }
-.rangeVal{
-  min-width: 30px;
-  text-align:right;
-  font-weight:900;
-}
+.rangeVal{ min-width:30px; text-align:right; font-weight:950; color: var(--ps-navy); }
 
-/* ===== Dialog ===== */
+/* =========================================
+   DIALOGS
+   ========================================= */
 .dialog{
   border:0;
-  border-radius:16px;
+  border-radius: var(--radius-lg);
   padding:0;
   width:min(620px, 94vw);
-  box-shadow: 0 10px 40px rgba(0,0,0,0.25);
+  box-shadow: var(--shadow);
 }
 .dialog::backdrop{ background: rgba(0,0,0,0.45); }
-.dialogForm{ background:#fff; padding:14px; }
+
+.dialogForm{
+  background: rgba(255,255,255,0.98);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding:14px;
+}
 .dialogActions{ display:flex; justify-content:flex-end; gap:8px; margin-top:12px; }
 
 .diffBody{
   max-height: 60vh;
   overflow:auto;
-  border:1px solid #e3e8ee;
-  border-radius:14px;
+  border:1px solid rgba(11,18,32,0.10);
+  border-radius: var(--radius-lg);
   padding:10px;
-  background:#fafbfd;
+  background: rgba(255,255,255,0.90);
 }
-
 .diffItem{
-  border:1px solid #e3e8ee;
-  border-radius:14px;
+  border:1px solid rgba(11,18,32,0.10);
+  border-radius: var(--radius-lg);
   padding:10px;
   background:#fff;
   margin:10px 0;
+  box-shadow: 0 6px 14px rgba(0,0,0,0.06);
 }
-
 .kv{
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
   font-size: 12px;
   white-space: pre-wrap;
+  color: rgba(11,18,32,0.85);
+}
+
+/* Mobile tweaks */
+@media (max-width:700px){
+  .topbar{ height:auto; }
+  .layout{ height:auto; min-height: calc(100% - 52px); }
+}
+
+/* =========================================
+   Panel collapsed when no feature selected
+   ========================================= */
+
+/* default = malý panel */
+.panel{
+  flex: none;
+  height: 120px;
+  max-height: 120px;
+  overflow: hidden;
+  transition: height .25s ease, max-height .25s ease;
+}
+
+/* when editing -> full height */
+body.editing .panel{
+  flex: 1;
+  height: auto;
+  max-height: none;
+  overflow: auto;
+}
+/* =========================================
+   Top bar – mobile layout
+   ========================================= */
+
+@media (max-width: 480px){
+
+  .topbar{
+    flex-direction: column;
+    align-items: flex-start;
+    height: auto;
+    padding: 8px 10px;
+    gap: 6px;
+  }
+
+  /* Title small and left */
+  .brand{
+    font-size: 12px;
+    font-weight: 800;
+    line-height: 1.1;
+  }
+
+  /* Buttons go to second row */
+  .topActions{
+    width: 100%;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .topActions button,
+  .topActions .badge{
+    font-size: 12px;
+    padding: 6px 8px;
+    border-radius: 10px;
+  }
+
+  /* make Commit stand out but not huge */
+  .topActions button.primary{
+    font-size: 13px;
+  }
+}
+
+/* =========================================
+   MapTall smaller + make hint fully visible in collapsed panel
+   ========================================= */
+
+/* Menšia mapa v ne-edit režime */
+:root{
+  --mapTall: 80vh;         /* bolo 58vh, daj 42–50 podľa chuti */
+  --panelCollapsed: 170px; /* viac miesta na hint */
+}
+
+/* V non-edit režime nech panel ukáže celý hint (ak treba, scroll) */
+.panel{
+  overflow: auto;                 /* aby sa hint neodrezal */
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: 10px;
+}
+
+/* Keď NIE JE editing, mapa nech rešpektuje mapTall (nech nie je príliš veľká) */
+body:not(.editing) #mapWrap{
+  height: var(--mapTall);
+}
+
+/* Aby neostala biela diera pod mapou na vyšších mobiloch:
+   panel zoberie zvyšok, ale minimálne collapsed height */
+body:not(.editing) .panel{
+  flex: 1 1 auto;
+  min-height: var(--panelCollapsed);
+}
+
+/* Editing režim ostáva rovnaký (strip + veľký panel) */
+body.editing #mapWrap{
+  height: var(--mapStrip);
 }

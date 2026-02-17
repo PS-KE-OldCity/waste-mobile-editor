@@ -3,14 +3,14 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <title>Waste Mobile Editor</title>
+  <title>Waste passport</title>
 
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <link rel="stylesheet" href="/style.css" />
 </head>
 <body>
   <header class="topbar">
-    <div class="brand">Waste Editor</div>
+    <div class="brand">Waste passport</div>
 
     <div class="topActions">
       <button id="diffBtn" type="button" class="ghost" disabled>Zmeny</button>
@@ -24,10 +24,10 @@
   </header>
 
   <main class="layout">
+    <!-- MAP -->
     <section id="mapWrap">
       <div id="map"></div>
 
-      <!-- Map controls -->
       <div class="mapControls topRight">
         <button id="locateBtn" type="button" class="mapBtn" title="Moja poloha">⌖</button>
       </div>
@@ -35,24 +35,25 @@
       <div class="mapControls bottomRight">
         <button id="newSiteBtn" type="button" class="mapBtn big" title="Pridať stanovište">＋</button>
       </div>
-
-      <!-- Tiny close when editing -->
-      <div class="mapControls topLeft editingOnly">
-        <button id="clearSelBtn" type="button" class="mapBtn" title="Zrušiť výber">✕</button>
-      </div>
     </section>
 
+    <!-- PANEL -->
     <section id="panel" class="panel">
       <div class="panelHeader">
-        <div class="selInfo">
-          <div id="selTitle" class="selTitle">Vyber stanovište</div>
-          <div id="selSub" class="selSub">Klikni na marker v mape.</div>
+        <div class="panelHeaderRow">
+          <div class="selInfo">
+            <div id="selTitle" class="selTitle">Vyber stanovište</div>
+            <div id="selSub" class="selSub">Klikni na marker v mape.</div>
 
-          <div class="coordsRow">
-            <span>lat <b id="latVal">—</b></span>
-            <span>lng <b id="lngVal">—</b></span>
-            <button id="dirtyBadge" type="button" class="badgeBtn" disabled>Zmeny: 0</button>
+            <div class="coordsRow">
+              <span>lat <b id="latVal">—</b></span>
+              <span>lng <b id="lngVal">—</b></span>
+              <button id="dirtyBadge" type="button" class="badgeBtn" disabled>Zmeny: 0</button>
+            </div>
           </div>
+
+          <!-- X je vnutri boxu, zobrazi sa len v edit mode -->
+          <button id="clearSelBtn" type="button" class="closeBtn editingOnly" title="Zbaliť edit">✕</button>
         </div>
       </div>
 
@@ -66,7 +67,7 @@
       <h3>Zmeny (diff)</h3>
       <div id="diffBody" class="diffBody"></div>
       <div class="dialogActions">
-        <button value="ok">Zavrieť</button>
+        <button value="ok" class="primary">Zavrieť</button>
       </div>
     </form>
   </dialog>
@@ -82,7 +83,7 @@
 
       <div class="dialogActions">
         <button value="cancel">Zrušiť</button>
-        <button value="ok">OK</button>
+        <button value="ok" class="primary">OK</button>
       </div>
     </form>
   </dialog>
