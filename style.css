@@ -92,6 +92,7 @@ button.danger{ background: var(--danger); }
 
 body.editing #mapWrap{
   height: var(--mapStrip);
+  overflow: hidden; /* FIX: aby X neprekrývalo panel */
 }
 
 #map{
@@ -109,6 +110,12 @@ body.editing #mapWrap{
 .mapControls.topRight{ top:8px; right:8px; }
 .mapControls.topLeft{ top:8px; left:8px; }
 .mapControls.bottomRight{ bottom:8px; right:8px; }
+
+/* Disabled map controls while editing */
+.mapBtn[disabled]{
+  opacity: 0.35;
+  pointer-events: none;
+}
 
 .mapBtn{
   width:42px;
@@ -132,6 +139,15 @@ body.editing #mapWrap{
 
 .editingOnly{ display:none; }
 body.editing .editingOnly{ display:flex; }
+
+/* FIX: X v edit mode bude menšie a sedí do stripu */
+body.editing .mapControls.topLeft{ top:2px; left:8px; }
+body.editing #clearSelBtn{
+  width:28px;
+  height:28px;
+  border-radius:10px;
+  font-size:14px;
+}
 
 /* ===== Panel ===== */
 .panel{
@@ -190,13 +206,6 @@ body.editing .editingOnly{ display:flex; }
   margin-bottom:10px;
 }
 
-.rowInline{
-  display:flex;
-  gap:10px;
-  align-items:flex-end;
-  flex-wrap:wrap;
-}
-
 label{ font-size:12px; opacity:0.75; }
 
 input, select, textarea{
@@ -218,7 +227,30 @@ textarea{ resize: vertical; }
   border:1px dashed #cfd7df;
 }
 
-/* ===== Container chips/cards ===== */
+/* ===== Segmented buttons (terénne voľby) ===== */
+.seg{
+  display:flex;
+  gap:8px;
+}
+.segBtn{
+  flex:1;
+  padding:12px 10px;
+  border-radius:14px;
+  background:#e9eef3;
+  color:#13202c;
+  border:1px solid #d7dde3;
+  font-weight:900;
+}
+.segBtn.on{
+  background:#d6f5dd;
+  border-color:#9bd7aa;
+}
+.segBtn.offOn{
+  background:#ffe2e2;
+  border-color:#f0b0b0;
+}
+
+/* ===== Container cards ===== */
 .containerGrid{
   display:grid;
   grid-template-columns: repeat(2, 1fr);
@@ -282,10 +314,9 @@ textarea{ resize: vertical; }
   font-weight:900;
   background: var(--btn);
 }
-
 .pmBtn.minus{ background: var(--danger); }
 
-/* ===== Toggle buttons ===== */
+/* ===== Toggle + sliders ===== */
 .toggleBtn{
   width:100%;
   padding:12px 12px;
@@ -300,7 +331,6 @@ textarea{ resize: vertical; }
   border-color:#9bd7aa;
 }
 
-/* ===== Range sliders ===== */
 .rangeWrap{
   display:flex;
   gap:10px;

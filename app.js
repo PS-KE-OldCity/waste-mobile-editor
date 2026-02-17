@@ -39,19 +39,17 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   // ===== State =====
   let geojsonData = null;
-  let originalSnapshot = null; // deep copy of last loaded file (for diff)
+  let originalSnapshot = null; // deep copy baseline for diff
   let selectedFeature = null;
   let selectedMarker = null;
   let selectedIdx = null;
 
-  const dirtyKeys = new Set(); // feature keys + "__file__"
+  const dirtyKeys = new Set();
   let movedCount = 0;
 
-  // Map markers by key
   const markerByKey = new Map();
 
-  // ===== Container types for field work =====
-  // count-only UX (+/-). Liter defaults are prefilled.
+  // ===== Container types =====
   const CONTAINERS = [
     { key: "glass", label: "Sklo", liters: 1100, color: "#7fd3ff", icon: "◯" },
     { key: "mixed", label: "Zmes", liters: 1100, color: "#c9c9c9", icon: "■" },
@@ -62,15 +60,11 @@ document.addEventListener("DOMContentLoaded", async () => {
   ];
 
   // ===== Helpers =====
-  function deepCopy(obj) {
-    return JSON.parse(JSON.stringify(obj));
-  }
+  const deepCopy = (obj) => JSON.parse(JSON.stringify(obj));
 
   function ensureId(feature) {
     const p = (feature.properties ||= {});
-    if (!p.site_id) {
-      p.site_id = `site_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
-    }
+    if (!p.site_id) p.site_id = `site_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
   }
 
   function featureKey(feature, idx) {
@@ -78,18 +72,10 @@ document.addEventListener("DOMContentLoaded", async () => {
     return p.site_id || p.id || feature.id || `idx:${idx}`;
   }
 
-  function setEditing(on) {
-    document.body.classList.toggle("editing", !!on);
-    setTimeout(() => map.invalidateSize(), 180);
-  }
-
-  function isObj(v) {
-    return v !== null && typeof v === "object" && !Array.isArray(v);
-  }
+  function isObj(v) { return v !== null && typeof v === "object" && !Array.isArray(v); }
 
   function normalizeContainers(p) {
     if (!Array.isArray(p.containers)) p.containers = [];
-    // normalize to {fraction, label, volume_l, count}
     p.containers = p.containers.map((c) => {
       if (!isObj(c)) return null;
       const fraction = (c.fraction ?? c.waste ?? c.type ?? "").toString();
@@ -124,6 +110,15 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (lngVal) lngVal.textContent = Number(lng).toFixed(6);
   }
 
+  function setEditing(on) {
+    document.body.classList.toggle("editing", !!on);
+    // disable map buttons when editing (as requested)
+    if (locateBtn) locateBtn.disabled = !!on;
+    if (newSiteBtn) newSiteBtn.disabled = !!on;
+
+    setTimeout(() => map.invalidateSize(), 180);
+  }
+
   function updateAuthUI(user) {
     const token = Auth.getToken();
     if (token && user) {
@@ -151,6 +146,14 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
   }
 
+  function updateDirtyUI() {
+    const count = [...dirtyKeys].filter(k => k !== "__file__").length || (dirtyKeys.size ? 1 : 0);
+    if (dirtyBadgeBtn) dirtyBadgeBtn.textContent = `Zmeny: ${count}`;
+    if (diffBtn) diffBtn.disabled = dirtyKeys.size === 0;
+    if (dirtyBadgeBtn) dirtyBadgeBtn.disabled = dirtyKeys.size === 0;
+    if (commitBtn) commitBtn.disabled = !(Auth.getToken() && dirtyKeys.size > 0);
+  }
+
   function setDirty(key) {
     dirtyKeys.add(key);
     updateDirtyUI();
@@ -161,20 +164,10 @@ document.addEventListener("DOMContentLoaded", async () => {
     dirtyKeys.clear();
     movedCount = 0;
     updateDirtyUI();
-    // refresh marker colors
     for (const k of markerByKey.keys()) updateMarkerStyle(k);
   }
 
-  function updateDirtyUI() {
-    const count = [...dirtyKeys].filter(k => k !== "__file__").length || (dirtyKeys.size ? 1 : 0);
-    if (dirtyBadgeBtn) dirtyBadgeBtn.textContent = `Zmeny: ${count}`;
-    if (diffBtn) diffBtn.disabled = dirtyKeys.size === 0;
-    if (dirtyBadgeBtn) dirtyBadgeBtn.disabled = dirtyKeys.size === 0;
-    if (commitBtn) commitBtn.disabled = !(Auth.getToken() && dirtyKeys.size > 0);
-  }
-
   function makeDivIcon(isDirty) {
-    // simple dot marker (blue / red)
     const color = isDirty ? "#d32f2f" : "#1e88e5";
     const html = `
       <div style="
@@ -197,100 +190,26 @@ document.addEventListener("DOMContentLoaded", async () => {
     selectedFeature = null;
     selectedMarker = null;
     selectedIdx = null;
+
     if (selTitle) selTitle.textContent = "Vyber stanovište";
     if (selSub) selSub.textContent = "Klikni na marker v mape.";
     if (latVal) latVal.textContent = "—";
     if (lngVal) lngVal.textContent = "—";
+
     setEditing(false);
 
     if (form) {
       form.innerHTML = `<div class="hint">
         Terénny flow:<br/>
         1) Klikni na stanovište (marker)<br/>
-        2) Skontroluj GPS (ťahaj marker ak treba)<br/>
-        3) Uprav názov/poznámku, typ, zámok<br/>
-        4) Klikaj +/− na nádoby<br/>
-        5) Označ “Skontrolované”
+        2) Skontroluj polohu (GPS / ťahaj marker)<br/>
+        3) Názov → typ → zámok → nádoby (+/−)<br/>
+        4) Skontrolované
       </div>`;
     }
   }
 
-  // ===== Simple diff =====
-  function findOriginalFeatureByKey(key) {
-    if (!originalSnapshot?.features) return null;
-    const f = originalSnapshot.features.find((ft, idx) => featureKey(ft, idx) === key);
-    return f || null;
-  }
-
-  function summarizeChangesForFeature(current, original) {
-    const changes = [];
-
-    // coords
-    const c1 = current?.geometry?.coordinates;
-    const c0 = original?.geometry?.coordinates;
-    if (Array.isArray(c1) && Array.isArray(c0) && (c1[0] !== c0[0] || c1[1] !== c0[1])) {
-      changes.push(`coordinates: [${c0[0]}, ${c0[1]}] → [${c1[0]}, ${c1[1]}]`);
-    }
-
-    const p1 = current?.properties || {};
-    const p0 = original?.properties || {};
-
-    const KEYS = [
-      "name", "note",
-      "site_kind", "has_lock",
-      "verified", "accessible",
-      "cleanliness", "wear", "issues"
-    ];
-
-    for (const k of KEYS) {
-      const a = p0[k];
-      const b = p1[k];
-      if (JSON.stringify(a) !== JSON.stringify(b)) {
-        changes.push(`${k}: ${JSON.stringify(a)} → ${JSON.stringify(b)}`);
-      }
-    }
-
-    // containers summary
-    const cont0 = (p0.containers || []).map(x => ({ fraction: x.fraction ?? x.waste ?? x.type, count: x.count ?? 1, volume_l: x.volume_l ?? x.volume ?? x.liters })).sort((a,b)=>String(a.fraction).localeCompare(String(b.fraction)));
-    const cont1 = (p1.containers || []).map(x => ({ fraction: x.fraction ?? x.waste ?? x.type, count: x.count ?? 1, volume_l: x.volume_l ?? x.volume ?? x.liters })).sort((a,b)=>String(a.fraction).localeCompare(String(b.fraction)));
-    if (JSON.stringify(cont0) !== JSON.stringify(cont1)) {
-      changes.push(`containers: ${JSON.stringify(cont0)} → ${JSON.stringify(cont1)}`);
-    }
-
-    return changes;
-  }
-
-  function openDiffDialog() {
-    if (!diffDialog || !diffBody) return;
-
-    diffBody.innerHTML = "";
-
-    const keys = [...dirtyKeys].filter(k => k !== "__file__");
-    if (keys.length === 0 && dirtyKeys.size > 0) {
-      const d = document.createElement("div");
-      d.className = "diffItem";
-      d.innerHTML = `<b>Zmeny</b><div class="kv">Zmeny na súbore (pridané/odstránené stanovištia alebo iné štrukturálne zmeny).</div>`;
-      diffBody.appendChild(d);
-    }
-
-    for (const key of keys) {
-      const entry = markerByKey.get(key);
-      const current = entry?.feature || null;
-      const original = findOriginalFeatureByKey(key);
-
-      const title = (current?.properties?.name || current?.properties?.site_id || key);
-      const changes = original ? summarizeChangesForFeature(current, original) : ["(nové stanovište alebo nenájdený originál)"];
-
-      const box = document.createElement("div");
-      box.className = "diffItem";
-      box.innerHTML = `<b>${title}</b><div class="kv">${changes.join("\n")}</div>`;
-      diffBody.appendChild(box);
-    }
-
-    diffDialog.showModal();
-  }
-
-  // ===== Form UI (field work) =====
+  // ===== Segmented UI helpers =====
   function mkSection(title) {
     const s = document.createElement("div");
     s.className = "section";
@@ -327,28 +246,6 @@ document.addEventListener("DOMContentLoaded", async () => {
     return ta;
   }
 
-  function mkSelect(value, options, onChange) {
-    const sel = document.createElement("select");
-    for (const opt of options) {
-      const o = document.createElement("option");
-      o.value = opt.value;
-      o.textContent = opt.label;
-      sel.appendChild(o);
-    }
-    sel.value = value ?? "";
-    sel.addEventListener("change", () => onChange(sel.value));
-    return sel;
-  }
-
-  function mkToggleButton(isOn, textOff, textOn, onToggle) {
-    const b = document.createElement("button");
-    b.type = "button";
-    b.className = `toggleBtn ${isOn ? "on" : ""}`;
-    b.textContent = isOn ? textOn : textOff;
-    b.addEventListener("click", () => onToggle(!isOn));
-    return b;
-  }
-
   function mkRange(value, min, max, step, onInput) {
     const wrap = document.createElement("div");
     wrap.className = "rangeWrap";
@@ -374,6 +271,91 @@ document.addEventListener("DOMContentLoaded", async () => {
     return wrap;
   }
 
+  function mkSeg(options, currentValue, onChange, mode = "neutral") {
+    // mode: neutral | yesno (for coloring optional)
+    const wrap = document.createElement("div");
+    wrap.className = "seg";
+
+    for (const opt of options) {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "segBtn";
+      const isOn = (currentValue === opt.value);
+      if (isOn) {
+        b.classList.add("on");
+        if (mode === "yesno" && opt.value === false) b.classList.add("offOn");
+      }
+      b.textContent = opt.label;
+      b.addEventListener("click", () => onChange(opt.value));
+      wrap.appendChild(b);
+    }
+    return wrap;
+  }
+
+  // ===== Diff =====
+  function findOriginalFeatureByKey(key) {
+    if (!originalSnapshot?.features) return null;
+    const f = originalSnapshot.features.find((ft, idx) => featureKey(ft, idx) === key);
+    return f || null;
+  }
+
+  function summarizeChangesForFeature(current, original) {
+    const changes = [];
+
+    const c1 = current?.geometry?.coordinates;
+    const c0 = original?.geometry?.coordinates;
+    if (Array.isArray(c1) && Array.isArray(c0) && (c1[0] !== c0[0] || c1[1] !== c0[1])) {
+      changes.push(`coordinates: [${c0[0]}, ${c0[1]}] → [${c1[0]}, ${c1[1]}]`);
+    }
+
+    const p1 = current?.properties || {};
+    const p0 = original?.properties || {};
+
+    const KEYS = ["name","note","site_kind","has_lock","verified","accessible","cleanliness","wear","issues"];
+    for (const k of KEYS) {
+      if (JSON.stringify(p0[k]) !== JSON.stringify(p1[k])) {
+        changes.push(`${k}: ${JSON.stringify(p0[k])} → ${JSON.stringify(p1[k])}`);
+      }
+    }
+
+    const cont0 = (p0.containers || []).map(x => ({ f: x.fraction ?? x.waste ?? x.type, c: x.count ?? 1, v: x.volume_l ?? x.volume ?? x.liters })).sort((a,b)=>String(a.f).localeCompare(String(b.f)));
+    const cont1 = (p1.containers || []).map(x => ({ f: x.fraction ?? x.waste ?? x.type, c: x.count ?? 1, v: x.volume_l ?? x.volume ?? x.liters })).sort((a,b)=>String(a.f).localeCompare(String(b.f)));
+    if (JSON.stringify(cont0) !== JSON.stringify(cont1)) changes.push(`containers: ${JSON.stringify(cont0)} → ${JSON.stringify(cont1)}`);
+
+    return changes;
+  }
+
+  function openDiffDialog() {
+    if (!diffDialog || !diffBody) return;
+    diffBody.innerHTML = "";
+
+    const keys = [...dirtyKeys].filter(k => k !== "__file__");
+
+    if (keys.length === 0 && dirtyKeys.size > 0) {
+      const d = document.createElement("div");
+      d.className = "diffItem";
+      d.innerHTML = `<b>Zmeny</b><div class="kv">Zmeny na súbore (pridané/odstránené stanovištia alebo štruktúra).</div>`;
+      diffBody.appendChild(d);
+    }
+
+    for (const key of keys) {
+      const entry = markerByKey.get(key);
+      const current = entry?.feature || null;
+      const original = findOriginalFeatureByKey(key);
+
+      const title = (current?.properties?.name || current?.properties?.site_id || key);
+      const changes = original ? summarizeChangesForFeature(current, original) : ["(nové stanovište alebo nenájdený originál)"];
+
+      const box = document.createElement("div");
+      box.className = "diffItem";
+      box.innerHTML = `<b>${title}</b><div class="kv">${changes.join("\n")}</div>`;
+      diffBody.appendChild(box);
+    }
+
+    diffDialog.showModal();
+  }
+
+  // ===== Form (field work) =====
   function buildForm(feature, idx) {
     if (!form) return;
 
@@ -386,7 +368,11 @@ document.addEventListener("DOMContentLoaded", async () => {
     // QUICK: name + note
     const sQuick = mkSection("Rýchle údaje");
     {
-      const name = mkInput(p.name ?? "", (v) => { p.name = v; setDirty(featureKey(feature, idx)); if (selTitle) selTitle.textContent = v || (p.site_id || "Vybraný bod"); });
+      const name = mkInput(p.name ?? "", (v) => {
+        p.name = v;
+        setDirty(featureKey(feature, idx));
+        if (selTitle) selTitle.textContent = v || (p.site_id || "Vybraný bod");
+      });
       sQuick.appendChild(mkRow("Názov", name));
 
       const note = mkTextarea(p.note ?? "", (v) => { p.note = v; setDirty(featureKey(feature, idx)); }, 3);
@@ -394,37 +380,38 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
     form.appendChild(sQuick);
 
-    // STATUS: type + lock (dropdowns)
-    const sStatus = mkSection("Stanovište");
+    // SITE: type buttons + lock yes/no buttons
+    const sSite = mkSection("Stanovište");
     {
-      const kind = mkSelect(
-        p.site_kind ?? "",
+      // type: klietka, otvorene, podzemne, polopodzemne
+      const typeWrap = mkSeg(
         [
-          { value: "", label: "Typ (vyber)" },
+          { value: "cage", label: "Klietka" },
           { value: "open", label: "Otvorené" },
-          { value: "closed", label: "Zatvorené" },
           { value: "underground", label: "Podzemné" },
           { value: "semi_underground", label: "Polopodzemné" },
         ],
+        p.site_kind ?? "",
         (v) => { p.site_kind = v; setDirty(featureKey(feature, idx)); }
       );
-      sStatus.appendChild(mkRow("Typ", kind));
+      sSite.appendChild(mkRow("Typ", typeWrap));
 
-      const lock = mkSelect(
-        (p.has_lock === true) ? "yes" : (p.has_lock === false) ? "no" : "",
+      // lock yes/no as two buttons
+      const lockWrap = mkSeg(
         [
-          { value: "", label: "Zámok (vyber)" },
-          { value: "yes", label: "Má zámok" },
-          { value: "no", label: "Nemá zámok" },
+          { value: true, label: "Má zámok" },
+          { value: false, label: "Nemá zámok" },
         ],
-        (v) => { p.has_lock = (v === "yes") ? true : (v === "no") ? false : null; setDirty(featureKey(feature, idx)); }
+        (p.has_lock === true) ? true : (p.has_lock === false) ? false : null,
+        (v) => { p.has_lock = v; setDirty(featureKey(feature, idx)); },
+        "yesno"
       );
-      sStatus.appendChild(mkRow("Zámok", lock));
+      sSite.appendChild(mkRow("Zámok", lockWrap));
     }
-    form.appendChild(sStatus);
+    form.appendChild(sSite);
 
     // CONTAINERS: +/- counts
-    const sCont = mkSection("Nádoby (klikaj + / −)");
+    const sCont = mkSection("Nádoby (+ / −)");
     {
       const grid = document.createElement("div");
       grid.className = "containerGrid";
@@ -448,7 +435,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         title.textContent = t.label;
         const meta = document.createElement("div");
         meta.className = "cMeta";
-        meta.textContent = `${t.liters} l (predvoľba)`;
+        meta.textContent = `${t.liters} l`;
 
         info.appendChild(title);
         info.appendChild(meta);
@@ -495,47 +482,48 @@ document.addEventListener("DOMContentLoaded", async () => {
 
       const hint = document.createElement("div");
       hint.className = "small";
-      hint.textContent = "Tip: Ak sú rôzne objemy, doplň to v Pokročilé (JSON).";
+      hint.textContent = "Ak máš rôzne objemy, doplň to v Pokročilé (JSON).";
       sCont.appendChild(hint);
     }
     form.appendChild(sCont);
 
-    // CHECK / ACCESSIBILITY / SLIDERS / ISSUES
+    // CHECK: verified button + accessible yes/no buttons + sliders + issues
     const sCheck = mkSection("Kontrola");
     {
       const verified = (p.verified === true);
-      const btn = mkToggleButton(
-        verified,
-        "Označiť ako skontrolované",
-        "Skontrolované ✓ (klikni pre zrušenie)",
-        async (next) => {
-          p.verified = next;
-          if (next) {
-            p.verified_at = new Date().toISOString();
-            try {
-              const token = Auth.getToken();
-              if (token) {
-                const user = await GH.getViewer(token);
-                p.verified_by = user.login;
-              }
-            } catch {}
-          }
-          setDirty(featureKey(feature, idx));
-          buildForm(feature, idx); // refresh button text
+      const verifiedBtn = document.createElement("button");
+      verifiedBtn.type = "button";
+      verifiedBtn.className = `toggleBtn ${verified ? "on" : ""}`;
+      verifiedBtn.textContent = verified ? "Skontrolované ✓ (klikni pre zrušenie)" : "Označiť ako skontrolované";
+      verifiedBtn.addEventListener("click", async () => {
+        const next = !(p.verified === true);
+        p.verified = next;
+        if (next) {
+          p.verified_at = new Date().toISOString();
+          try {
+            const token = Auth.getToken();
+            if (token) {
+              const user = await GH.getViewer(token);
+              p.verified_by = user.login;
+            }
+          } catch {}
         }
-      );
-      sCheck.appendChild(btn);
+        setDirty(featureKey(feature, idx));
+        buildForm(feature, idx);
+      });
+      sCheck.appendChild(verifiedBtn);
 
-      const acc = mkSelect(
-        (p.accessible === true) ? "yes" : (p.accessible === false) ? "no" : "",
+      // accessible as two buttons
+      const accWrap = mkSeg(
         [
-          { value: "", label: "Bezbariérové? (vyber)" },
-          { value: "yes", label: "Áno" },
-          { value: "no", label: "Nie" },
+          { value: true, label: "Bezbariérové: Áno" },
+          { value: false, label: "Bezbariérové: Nie" },
         ],
-        (v) => { p.accessible = (v === "yes") ? true : (v === "no") ? false : null; setDirty(featureKey(feature, idx)); }
+        (p.accessible === true) ? true : (p.accessible === false) ? false : null,
+        (v) => { p.accessible = v; setDirty(featureKey(feature, idx)); },
+        "yesno"
       );
-      sCheck.appendChild(mkRow("Bezbariérové", acc));
+      sCheck.appendChild(mkRow("Bezbariérové", accWrap));
 
       const clean = (Number.isFinite(p.cleanliness) ? p.cleanliness : 3);
       const wear = (Number.isFinite(p.wear) ? p.wear : 3);
@@ -544,7 +532,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       sCheck.appendChild(mkRow("Index opotrebenia (0–5)", mkRange(wear, 0, 5, 1, (v) => { p.wear = v; setDirty(featureKey(feature, idx)); })));
 
       const issues = mkTextarea(p.issues ?? "", (v) => { p.issues = v; setDirty(featureKey(feature, idx)); }, 3);
-      sCheck.appendChild(mkRow("Závady / poznámky z terénu", issues));
+      sCheck.appendChild(mkRow("Závady", issues));
 
       const info = document.createElement("div");
       info.className = "small";
@@ -559,7 +547,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
     form.appendChild(sCheck);
 
-    // ADVANCED (collapsed)
+    // ADVANCED
     const adv = document.createElement("details");
     adv.className = "section";
     adv.open = false;
@@ -624,17 +612,11 @@ document.addEventListener("DOMContentLoaded", async () => {
     updateCoordsUI(feature);
     setEditing(true);
     buildForm(feature, idx);
-
-    // keep marker draggable and visible
   }
 
   function drawFeatures() {
     markersLayer.clearLayers();
     markerByKey.clear();
-
-    selectedFeature = null;
-    selectedMarker = null;
-    selectedIdx = null;
 
     clearSelectionUI();
 
@@ -689,16 +671,10 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   map.on("locationerror", () => alert("Nepodarilo sa získať polohu."));
-
   map.on("locationfound", (e) => {
-    // show a small dot for gps
     const ll = e.latlng;
-    // create/update
-    if (!window.__gpsDot) {
-      window.__gpsDot = L.circleMarker(ll, { radius: 6 }).addTo(map);
-    } else {
-      window.__gpsDot.setLatLng(ll);
-    }
+    if (!window.__gpsDot) window.__gpsDot = L.circleMarker(ll, { radius: 6 }).addTo(map);
+    else window.__gpsDot.setLatLng(ll);
   });
 
   if (newSiteBtn) {
@@ -732,7 +708,6 @@ document.addEventListener("DOMContentLoaded", async () => {
 
       drawFeatures();
 
-      // select new one by reference
       const found = [...markerByKey.values()].find(x => x.feature === f);
       if (found) {
         map.setView(found.marker.getLatLng(), Math.max(map.getZoom(), 18));
@@ -741,11 +716,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     });
   }
 
-  if (clearSelBtn) {
-    clearSelBtn.addEventListener("click", () => {
-      clearSelectionUI();
-    });
-  }
+  if (clearSelBtn) clearSelBtn.addEventListener("click", () => clearSelectionUI());
 
   // ===== Diff =====
   if (diffBtn) diffBtn.addEventListener("click", openDiffDialog);
@@ -770,15 +741,9 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   // ===== Auth =====
   if (loginBtn) loginBtn.addEventListener("click", () => Auth.startLogin());
-  if (logoutBtn) {
-    logoutBtn.addEventListener("click", () => {
-      Auth.logout();
-      refreshUser();
-      updateDirtyUI();
-    });
-  }
+  if (logoutBtn) logoutBtn.addEventListener("click", () => { Auth.logout(); refreshUser(); updateDirtyUI(); });
 
-  // ===== Commit workflow =====
+  // ===== Commit =====
   if (commitBtn) {
     commitBtn.addEventListener("click", () => {
       if (!commitDialog) return;
@@ -821,7 +786,6 @@ document.addEventListener("DOMContentLoaded", async () => {
           `Editor: @${user.login}\nZmeny: ${dirtyKeys.size}\nPresuny: ${movedCount}\nFeatures: ${geojsonData.features.length}`
         );
 
-        // reset dirty + refresh original snapshot baseline
         originalSnapshot = deepCopy(geojsonData);
         clearDirtyAll();
 
